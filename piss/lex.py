@@ -1,7 +1,3 @@
-"""
-Tools for lexing PISS IDL inputs.
-"""
-
 from textwrap import dedent
 from typing import NamedTuple
 from dataclasses import dataclass
@@ -15,10 +11,13 @@ class KeywordKind(enum.Enum):
     KeywordKind enumerates the keywords which are legal in PISS IDL.
     """
 
+    CONST = "const"
     STRUCT = "struct"
     ENUM = "enum"
     TYPEDEF = "typedef"
-    CONST = "const"
+    MODULE = "module"
+    UINT = "UINT"
+    INT = "INT"
 
 
 @dataclass
@@ -37,7 +36,7 @@ class Keyword(TokenKind):
 
 @dataclass
 class Identifier(TokenKind):
-    value: str
+    name: str
 
 
 @dataclass
@@ -320,3 +319,115 @@ def token(data: str) -> tuple[TokenKind, int] | None:
         raise UnexpectedCharacter
 
     return token_kind, length
+
+
+class Tokenizer:
+    """
+    Represents an input to be tokenized
+
+    Parameters:
+        source: str - The input to be tokenized.
+
+    Attributes:
+        current_index: int - Index into source, where lexing is occuring.
+        remaining_text: str - Unconsumed portion of source.
+    """
+
+    def __init__(self, source: str):
+        self.current_index = 0
+        self.remaining_text = source
+
+    def __repr__(self) -> str:
+        if len(self.remaining_text) < 15:
+            return f'Tokenizer("{self.remaining_text}")'
+        return f'Tokenizer("{self.remaining_text[0:15]}...")'
+
+    def next_token(self) -> Token | None:
+        """
+        Consume one token from front of input, if it exists.
+
+        Returns:
+            None - Input has been exhausted.
+            Token - Consumed Token.
+        """
+
+        self.skip_whitespace()
+
+        if not len(self.remaining_text):
+            return None
+
+        start = self.current_index
+
+        token_kind_or_none = self._next_token()
+        if token_kind_or_none is None:
+            return None
+
+        end = self.current_index
+
+        return Token(kind=token_kind_or_none, span=Span(start, end))
+
+    def skip_whitespace(self):
+        """
+        Consume whitespace and comments from remaining input.
+        """
+
+        skipped = skip(self.remaining_text)
+        self.chomp(skipped)
+
+    def _next_token(self) -> TokenKind | None:
+        """
+        Consume token from remaining input, if it exists.
+
+        Returns:
+            None - Input is exhausted.
+            TokenKind - Type of Token consumed.
+
+        Raises:
+            UnexpectedCharacter - Remaining input contained character which is illegal in all Tokens.
+        """
+
+        result = token(self.remaining_text)
+        if result is None:
+            return None
+
+        token_kind, chars_read = result
+        self.chomp(chars_read)
+
+        return token_kind
+
+    def chomp(self, count: int):
+        """
+        Remove characters from remaining input.
+
+        Parameters:
+            count: int - Number of characters to remove.
+
+        """
+
+        self.remaining_text = self.remaining_text[count:]
+        self.current_index += count
+
+
+def tokenize(data: str) -> list[Token]:
+    """
+    Produce a list of Tokens from the provided input.
+
+    Parameters:
+        data: str - Input to be tokenized.
+
+    Returns:
+        list[Tokens] - List of Tokens.
+    """
+
+    tokenizer = Tokenizer(data)
+    tokens = []
+
+    while True:
+        result = tokenizer.next_token()
+
+        if result is None:
+            break
+
+        tokens.append(result)
+
+    return tokens

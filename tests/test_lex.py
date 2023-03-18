@@ -3,7 +3,7 @@ Tests for functions in lex.py.
 """
 
 import pytest
-from piss import lex
+import piss.lex as lex
 from textwrap import dedent
 from typing import Type
 
