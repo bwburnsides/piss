@@ -1,8 +1,6 @@
 from textwrap import dedent
-from typing import NamedTuple
 from dataclasses import dataclass
 import enum
-from pprint import pprint
 from typing import Callable
 
 
@@ -16,8 +14,8 @@ class KeywordKind(enum.Enum):
     ENUM = "enum"
     TYPEDEF = "typedef"
     MODULE = "module"
-    UINT = "UINT"
-    INT = "INT"
+    UINT = "uint"
+    INT = "int"
 
 
 @dataclass
@@ -29,44 +27,17 @@ class TokenKind:
     pass
 
 
-@dataclass
-class Keyword(TokenKind):
-    value: KeywordKind
-
-
-@dataclass
-class Identifier(TokenKind):
-    name: str
-
-
-@dataclass
-class Integer(TokenKind):
-    value: int
-
-
-@dataclass
-class LeftBrace(TokenKind):
-    ...
-
-
-@dataclass
-class RightBrace(TokenKind):
-    ...
-
-
-@dataclass
-class SemiColon(TokenKind):
-    ...
-
-
-@dataclass
-class Comma(TokenKind):
-    ...
-
-
-@dataclass
-class Equals(TokenKind):
-    ...
+class TokenKind(enum.Enum):
+    KEYWORD = "keyword"
+    IDENTIFIER = "identifier"
+    INTEGER = "integer"
+    LEFT_BRACE = "left_brace"
+    RIGHT_BRACE = "right_brace"
+    SEMICOLON = "semicolon"
+    COMMA = "comma"
+    EQUALS = "equals"
+    LEFT_BRACKET = "left_bracket"
+    RIGHT_BRACKET = "right_bracket"
 
 
 @dataclass
@@ -87,6 +58,46 @@ class Token:
 
     kind: TokenKind
     span: Span
+
+
+@dataclass
+class Keyword(Token):
+    keyword: KeywordKind
+
+
+@dataclass
+class Identifier(Token):
+    name: str
+
+
+@dataclass
+class Integer(Token):
+    value: int
+
+
+@dataclass
+class LeftBrace(Token):
+    ...
+
+
+@dataclass
+class RightBrace(Token):
+    ...
+
+
+@dataclass
+class SemiColon(Token):
+    ...
+
+
+@dataclass
+class Comma(Token):
+    ...
+
+
+@dataclass
+class Equals(TokenKind):
+    ...
 
 
 class LexError(ValueError):
