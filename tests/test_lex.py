@@ -3,7 +3,7 @@ Tests for functions in lex.py.
 """
 
 import pytest
-import piss.lex as lex
+from piss import lex
 from textwrap import dedent
 from typing import Type
 
@@ -19,7 +19,7 @@ from typing import Type
 )
 def test_tokenize_identifier_or_keyword(
     input: str, expected_token: lex.Identifier | lex.Keyword, expected_chars_read: int
-):
+) -> None:
     ident_or_keyword, chars_read = lex.tokenize_identifier_or_keyword(input)
 
     assert ident_or_keyword == expected_token
@@ -36,8 +36,8 @@ def test_tokenize_identifier_or_keyword(
 )
 def test_fail_tokenize_identifier_or_keyword(
     input: str, expected_exception: Type[lex.LexError]
-):
-    with pytest.raises(expected_exception) as exception_type:
+) -> None:
+    with pytest.raises(expected_exception):
         lex.tokenize_identifier_or_keyword(input),
 
 
@@ -51,7 +51,7 @@ def test_fail_tokenize_identifier_or_keyword(
 )
 def test_tokenize_integer(
     input: str, expected_token: lex.Token, expected_chars_read: int
-):
+) -> None:
     token, chars_read = lex.tokenize_integer(input)
 
     assert token == expected_token
@@ -59,7 +59,7 @@ def test_tokenize_integer(
 
 
 @pytest.mark.parametrize(("input"), ["asdfghjkl"])
-def test_fail_tokenize_integer(input: str):
+def test_fail_tokenize_integer(input: str) -> None:
     with pytest.raises(lex.LexError):
         lex.tokenize_integer(input)
 
@@ -71,7 +71,7 @@ def test_fail_tokenize_integer(input: str):
         ("Hellow, World!", 0),
     ],
 )
-def test_whitespace(input: str, expected_chars_read: int):
+def test_whitespace(input: str, expected_chars_read: int) -> None:
     chars_read = lex.skip_whitespace(input)
     assert chars_read == expected_chars_read
 
@@ -84,7 +84,7 @@ def test_whitespace(input: str, expected_chars_read: int):
         (" foo bar { baz } // a comment", 0),
     ],
 )
-def test_comments(input: str, expected_chars_read: int):
+def test_comments(input: str, expected_chars_read: int) -> None:
     chars_read = lex.skip_comments(input)
     assert chars_read == expected_chars_read
 
@@ -100,13 +100,20 @@ def test_comments(input: str, expected_chars_read: int):
         (",", lex.Comma(), 1),
     ],
 )
-def test_token(input, expected_token, expected_length):
-    token, length = lex.token(input)
-    assert token == expected_token
+def test_token(input: str, expected_token: lex.TokenKind, expected_length: int) -> None:
+    result = lex.token(input)
+
+    assert result is not None
+
+    kind: lex.TokenKind
+    length: int
+
+    kind, length = result
+    assert kind == expected_token
     assert length == expected_length
 
 
-def test_tokenize():
+def test_tokenize() -> None:
     struct_example = dedent(
         """
     struct PersonType {

@@ -13,6 +13,24 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.test.dependencies]
-mypy = "^1.1.1"
-black = "^23.1.0"
 pytest = "^7.2.2"
+pytest-pretty = "^1.1.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.1.0"
+mypy = "^1.1.1"
+flake8 = "^6.0.0"
+
+[tool.mypy]
+disallow_any_expr = "true"
+disallow_any_explicit = "true"
+disallow_any_generics = "true"
+disallow_untyped_calls = "true"
+disallow_untyped_defs = "true"
+disallow_incomplete_defs = "true"
+check_untyped_defs = "true"
+warn_redundant_casts = "true"
+warn_unused_ignores = "true"
+warn_no_return = "true"
+warn_return_any = "true"
+warn_unreachable = "true"

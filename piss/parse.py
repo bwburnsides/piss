@@ -1,27 +1,10 @@
-# Expression = Identifier | Integer
-#
-# PrimitiveType = Keyword::INT
-#               | Keyword::UINT
-#
-# Type = PrimitiveType
-#       | Identifier
-#       | Type LeftBracket Expression RightBracket
-#
-# Field = Type Identifier
-#
-# ConstDefinition = Keyword::CONST Type Identifier Equals Expression SemiColon
-#
-# StructDefinition = Keyword::STRUCT Identifier LeftBrace (Field Comma)* RightBrace SemiColon
-#
-# EnumDefinition = Keyword::ENUM Identifier LeftBrace (Identifier Comma)* RightBrace SemiColon
-#
-# TypdefDefinition = Keyword::TYPEDEF Type Identifier SemiColon
-#
-# ModuleDefinition = Keyword::MODULE Identifier LeftBrace (Definitions)* RightBrace SemiColon
+"""
+Tools for parsing the PISS grammer.
+"""
 
 from dataclasses import dataclass
 import enum
-import piss.lex as lex
+from piss import lex
 import typing
 
 
@@ -45,6 +28,7 @@ class Identifier(Node):
     name: str
 
 
+@dataclass
 class PrimitiveType(enum.Enum):
     UINT = enum.auto()
     INT = enum.auto()
@@ -52,10 +36,21 @@ class PrimitiveType(enum.Enum):
 
 @dataclass
 class Type(Node):
+    """
+    Represents a Type in a PISS AST.
+
+    Parameters:
+        name: PrimitiveType | Identifier - The name of the type. Either a primitive (builtin) type
+            or an identifier (user defined) type.
+    """
+
     name: PrimitiveType | Identifier
+    # arity: int = 0
 
 
-Expression = Identifier | Integer
+@dataclass
+class Expression(Node):
+    expr: Identifier | Integer
 
 
 @dataclass
@@ -158,10 +153,10 @@ class Parser:
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, Keyword):
+        if not isinstance(peeked, lex.Keyword):
             raise UnexpectedToken
 
-        if peeked.kind != kind:
+        if peeked.keyword != kind:
             raise UnexpectedToken
 
         next = self.next_then_unwrap()
@@ -191,61 +186,71 @@ class Parser:
         next = self.next_then_unwrap()
         return Integer(next.span, typing.cast(lex.Integer, next.kind).value)
 
-    def parse_module(self) -> Module:
-        # ModuleDefinition = Keyword::MODULE Identifier LeftBrace (Definitions)* RightBrace SemiColon
+    def parse_expression(self) -> Expression:
+        # Expression = Identifier | Integer
 
-        module = self.parse_keyword(lex.KeywordKind.MODULE)
+        # Attempt to parse an Identitifer. If there is an UnexpectedToken, then we could
+        # not successfully parse one, and now we'll try to parse an Integer.
+        try:
+            ident = self.parse_identifier()
+        except UnexpectedToken:
+            pass
+        else:
+            return Expression(ident.span, ident)
 
-        ident = self.parse_identifier()
+        # Don't try to catch UnexpectedToken here. If its raised that
+        # means that neither an Identifier or an Integer could be parsed.
+        # This means that no Expression could be parsed since we've
+        # already tried to parse an Identifier.
+        integer = self.parse_integer()
+        return Expression(integer.span, integer)
 
-        self.parse_token(lex.LeftBrace)
+    def parse_type(self) -> Type:
+        # Type = Keyword(Int)
+        #       | Identifier
+        #       | Type LeftBracket Expression RightBracket
 
-        definitions = []
+        # TODO: Handle array types and add tests
 
-        while True:
-            try:
-                definition = self.parse_definition()
-            except UnexpectedToken:
-                break
-            except ParseError:
-                raise ParseError
-            else:
-                definitions.append(definition)
-
-        self.parse_token(lex.RightBrace)
-        semicolon = self.parse_token(lex.SemiColon)
-
-        return Module(module.span + semicolon.span, ident, definitions)
-
-    def parse_definition(self) -> Definition:
-        definition_parsers = [
-            self.parse_const,
-            self.parse_struct,
-            self.parse_enum,
-            self.parse_typedef,
+        primitives = [
+            (lex.KeywordKind.UINT, PrimitiveType.UINT),
+            (lex.KeywordKind.INT, PrimitiveType.INT),
         ]
 
-        # Try to parse each type of definition. If it succeeds, then return that definition.
-        # However, a ParseError might be raised. These include UnexpectedEOF and UnexpectedToken.
-        # In the case of an UnexecptedEOF, that means that the token stream was unexpectedly
-        # exhausted. This is a syntactic error, it means that tokens were missing. Maybe a missing
-        # semicolon, so we raise that exception to our caller. However, if for example an
-        # UnexpectedToken exception occurs, this likely means that the token stream doesn't
-        # currenly have the target definition at the front. In that case, we ignore the
-        # exception and continue onwards and attempt to parse the next type of definition.
-
-        for parser in definition_parsers:
+        # Search for a Keyword token corresponding to the PrimitiveType
+        # KeywordKind. If there is an UnexpectedToken, then we'll try to parse
+        # the next PrimitiveType KeywordKind. If there isn't, then we've parsed
+        # the base of a Type and can progress to checking for array types.
+        for keyword, primitive in primitives:
             try:
-                return parser()
-            except UnexpectedEOF:
-                raise UnexpectedEOF
+                type_base = self.parse_keyword(keyword)
             except UnexpectedToken:
                 continue
+            else:
+                return Type(type_base.span, primitive)
 
-        raise UnexpectedToken
+        # If no PrimitiveType could be parsed, then the Type base must be an Identifier.
+        # This Identifier corresponds to the name of a user-defined type, maybe via
+        # a typedef, struct, or enum definition. Don't try to catch an exceptions
+        # since this is the last possibility for a valid Type base.
+        ident = self.parse_identifier()
+
+        # Now we check if this type is an array type.
+
+        return Type(ident.span, ident)
+
+    def parse_field(self) -> Field:
+        # Field = Type Identifier
+
+        type = self.parse_type()
+        ident = self.parse_identifier()
+
+        return Field(type.span + ident.span, type, ident)
 
     def parse_const(self) -> Const:
         # ConstDefinition = Keyword::CONST Type Identifier Equals Expression SemiColon
+
+        # TODO: use Field instead of Type Identifier and update grammar
 
         const = self.parse_keyword(lex.KeywordKind.CONST)
 
@@ -325,6 +330,8 @@ class Parser:
     def parse_typedef(self) -> Typedef:
         # TypdefDefinition = Keyword::TYPEDEF Type Identifier SemiColon
 
+        # TODO: use Field instead of Type Identifier and update grammar
+
         typedef = self.parse_keyword(lex.KeywordKind.TYPEDEF)
 
         kind = self.parse_type()
@@ -335,58 +342,55 @@ class Parser:
 
         return Typedef(typedef.span + semicolon.span, kind, ident)
 
-    def parse_type(self) -> Type:
-        # Type = Keyword(Int)
-        #       | Identifier
-        #       | Type LeftBracket Expression RightBracket
-
-        # TODO: HANDLE ARRAY TYPES
-
-        primitives = [
-            (lex.KeywordKind.UINT, PrimitiveType.UINT),
-            (lex.KeywordKind.INT, PrimitiveType.INT),
+    def parse_definition(self) -> Definition:
+        definition_parsers = [
+            self.parse_const,
+            self.parse_struct,
+            self.parse_enum,
+            self.parse_typedef,
         ]
 
-        # Search for a Keyword token corresponding to the PrimitiveType
-        # KeywordKind. If there is an UnexpectedToken, then we'll try to parse
-        # the next PrimitiveType KeywordKind. If there isn't, then we've parsed
-        # a Type and can return.
-        for token, primitive in primitives:
+        # Try to parse each type of definition. If it succeeds, then return that definition.
+        # However, a ParseError might be raised. These include UnexpectedEOF and UnexpectedToken.
+        # In the case of an UnexecptedEOF, that means that the token stream was unexpectedly
+        # exhausted. This is a syntactic error, it means that tokens were missing. Maybe a missing
+        # semicolon, so we raise that exception to our caller. However, if for example an
+        # UnexpectedToken exception occurs, this likely means that the token stream doesn't
+        # currenly have the target definition at the front. In that case, we ignore the
+        # exception and continue onwards and attempt to parse the next type of definition.
+
+        for parser in definition_parsers:
             try:
-                keyword = self.parse_keyword(token)
+                return parser()
+            except UnexpectedEOF:
+                raise UnexpectedEOF
             except UnexpectedToken:
                 continue
+
+        raise UnexpectedToken
+
+    def parse_module(self) -> Module:
+        # ModuleDefinition = Keyword::MODULE Identifier LeftBrace (Definitions)* RightBrace SemiColon
+
+        module = self.parse_keyword(lex.KeywordKind.MODULE)
+
+        ident = self.parse_identifier()
+
+        self.parse_token(lex.LeftBrace)
+
+        definitions = []
+
+        while True:
+            try:
+                definition = self.parse_definition()
+            except UnexpectedToken:
+                break
+            except ParseError:
+                raise ParseError
             else:
-                return Type(keyword.span, primitive)
+                definitions.append(definition)
 
-        # If no PrimitiveType could be parsed, then the Type must be an Identifier.
-        # This Identifier corresponds to the name of a user-defined type, maybe via
-        # a typedef, struct, or enum definition. Don't try to catch an exceptions
-        # since this is the last possibility for a valid Type.
-        ident = self.parse_identifier()
+        self.parse_token(lex.RightBrace)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return Type(ident.span, ident)
-
-    def parse_field(self) -> Field:
-        # Field = Type Identifier
-
-        type = self.parse_type()
-        ident = self.parse_identifier()
-
-        return Field(type.span + ident.span, type, ident)
-
-    def parse_expression(self) -> Expression:
-        # Expression = Identifier | Integer
-
-        # Attempt to parse an Identitifer. If there is an UnexpectedToken, then we could
-        # not successfully parse one, and now we'll try to parse an Integer.
-        try:
-            return self.parse_identifier()
-        except UnexpectedToken:
-            pass
-
-        # Don't try to catch UnexpectedToken here. If its raised that
-        # means that neither an Identifier or an Integer could be parsed.
-        # This means that no Expression could be parsed since we've
-        # already tried to parse an Identifier.
-        return self.parse_integer()
+        return Module(module.span + semicolon.span, ident, definitions)

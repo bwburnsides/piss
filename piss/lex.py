@@ -1,7 +1,10 @@
-from textwrap import dedent
+"""
+Tools for tokenizing the PISS lexicon.
+"""
+
 from dataclasses import dataclass
 import enum
-from typing import Callable, Any
+from typing import Callable
 
 
 class KeywordKind(enum.Enum):
@@ -83,12 +86,12 @@ class Span:
     Represents start and end bounds of a token within source.
     """
 
-    start: int
-    end: int
+    start: int = 0
+    end: int = 0
 
-    def __add__(self, other: Any) -> "Span":
+    def __add__(self, other: "Span") -> "Span":
         if not isinstance(other, Span):
-            return NotImplemented
+            return NotImplemented  # type: ignore[unreachable]
 
         return Span(self.start, other.end)
 
@@ -380,7 +383,7 @@ class Tokenizer:
 
         return Token(kind=token_kind_or_none, span=Span(start, end))
 
-    def skip_whitespace(self):
+    def skip_whitespace(self) -> None:
         """
         Consume whitespace and comments from remaining input.
         """
@@ -409,7 +412,7 @@ class Tokenizer:
 
         return token_kind
 
-    def chomp(self, count: int):
+    def chomp(self, count: int) -> None:
         """
         Remove characters from remaining input.
 
