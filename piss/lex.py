@@ -1,7 +1,7 @@
 from textwrap import dedent
 from dataclasses import dataclass
 import enum
-from typing import Callable
+from typing import Callable, Any
 
 
 class KeywordKind(enum.Enum):
@@ -27,17 +27,54 @@ class TokenKind:
     pass
 
 
-class TokenKind(enum.Enum):
-    KEYWORD = "keyword"
-    IDENTIFIER = "identifier"
-    INTEGER = "integer"
-    LEFT_BRACE = "left_brace"
-    RIGHT_BRACE = "right_brace"
-    SEMICOLON = "semicolon"
-    COMMA = "comma"
-    EQUALS = "equals"
-    LEFT_BRACKET = "left_bracket"
-    RIGHT_BRACKET = "right_bracket"
+@dataclass
+class Keyword(TokenKind):
+    keyword: KeywordKind
+
+
+@dataclass
+class Identifier(TokenKind):
+    name: str
+
+
+@dataclass
+class Integer(TokenKind):
+    value: int
+
+
+@dataclass
+class LeftBrace(TokenKind):
+    ...
+
+
+@dataclass
+class RightBrace(TokenKind):
+    ...
+
+
+@dataclass
+class LeftBracket(TokenKind):
+    ...
+
+
+@dataclass
+class RightBracket(TokenKind):
+    ...
+
+
+@dataclass
+class SemiColon(TokenKind):
+    ...
+
+
+@dataclass
+class Comma(TokenKind):
+    ...
+
+
+@dataclass
+class Equals(TokenKind):
+    ...
 
 
 @dataclass
@@ -49,6 +86,12 @@ class Span:
     start: int
     end: int
 
+    def __add__(self, other: Any) -> "Span":
+        if not isinstance(other, Span):
+            return NotImplemented
+
+        return Span(self.start, other.end)
+
 
 @dataclass
 class Token:
@@ -58,46 +101,6 @@ class Token:
 
     kind: TokenKind
     span: Span
-
-
-@dataclass
-class Keyword(Token):
-    keyword: KeywordKind
-
-
-@dataclass
-class Identifier(Token):
-    name: str
-
-
-@dataclass
-class Integer(Token):
-    value: int
-
-
-@dataclass
-class LeftBrace(Token):
-    ...
-
-
-@dataclass
-class RightBrace(Token):
-    ...
-
-
-@dataclass
-class SemiColon(Token):
-    ...
-
-
-@dataclass
-class Comma(Token):
-    ...
-
-
-@dataclass
-class Equals(TokenKind):
-    ...
 
 
 class LexError(ValueError):

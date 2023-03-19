@@ -58,7 +58,8 @@ class Type(Node):
 Expression = Identifier | Integer
 
 
-class Field:
+@dataclass
+class Field(Node):
     kind: Type
     ident: Identifier
 
@@ -132,13 +133,96 @@ class Parser:
 
         return token
 
+    def next_then_unwrap(self) -> lex.Token:
+        token_or_none = self.next()
+
+        if token_or_none is None:
+            raise UnexpectedEOF
+
+        return token_or_none
+
+    def parse_token(self, kind: typing.Type[lex.TokenKind]) -> lex.Token:
+        peeked = self.peek()
+
+        if peeked is None:
+            raise UnexpectedEOF
+
+        if not isinstance(peeked, kind):
+            raise UnexpectedToken
+
+        return self.next_then_unwrap()
+
+    def parse_keyword(self, kind: lex.KeywordKind) -> Keyword:
+        peeked = self.peek()
+
+        if peeked is None:
+            raise UnexpectedEOF
+
+        if not isinstance(peeked, Keyword):
+            raise UnexpectedToken
+
+        if peeked.kind != kind:
+            raise UnexpectedToken
+
+        next = self.next_then_unwrap()
+        return Keyword(next.span, typing.cast(lex.Keyword, next.kind).keyword)
+
+    def parse_identifier(self) -> Identifier:
+        peeked = self.peek()
+
+        if peeked is None:
+            raise UnexpectedEOF
+
+        if not isinstance(peeked, lex.Identifier):
+            raise UnexpectedToken
+
+        next = self.next_then_unwrap()
+        return Identifier(next.span, typing.cast(lex.Identifier, next.kind).name)
+
+    def parse_integer(self) -> Integer:
+        peeked = self.peek()
+
+        if peeked is None:
+            raise UnexpectedEOF
+
+        if not isinstance(peeked, lex.Integer):
+            raise UnexpectedToken
+
+        next = self.next_then_unwrap()
+        return Integer(next.span, typing.cast(lex.Integer, next.kind).value)
+
+    def parse_module(self) -> Module:
+        # ModuleDefinition = Keyword::MODULE Identifier LeftBrace (Definitions)* RightBrace SemiColon
+
+        module = self.parse_keyword(lex.KeywordKind.MODULE)
+
+        ident = self.parse_identifier()
+
+        self.parse_token(lex.LeftBrace)
+
+        definitions = []
+
+        while True:
+            try:
+                definition = self.parse_definition()
+            except UnexpectedToken:
+                break
+            except ParseError:
+                raise ParseError
+            else:
+                definitions.append(definition)
+
+        self.parse_token(lex.RightBrace)
+        semicolon = self.parse_token(lex.SemiColon)
+
+        return Module(module.span + semicolon.span, ident, definitions)
+
     def parse_definition(self) -> Definition:
         definition_parsers = [
             self.parse_const,
             self.parse_struct,
             self.parse_enum,
             self.parse_typedef,
-            self.parse_module,
         ]
 
         # Try to parse each type of definition. If it succeeds, then return that definition.
@@ -163,7 +247,7 @@ class Parser:
     def parse_const(self) -> Const:
         # ConstDefinition = Keyword::CONST Type Identifier Equals Expression SemiColon
 
-        self.parse_keyword(lex.KeywordKind.CONST)
+        const = self.parse_keyword(lex.KeywordKind.CONST)
 
         kind = self.parse_type()
         ident = self.parse_identifier()
@@ -172,15 +256,14 @@ class Parser:
 
         expr = self.parse_expression()
 
-        self.parse_token(lex.SemiColon)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        # Where does the span come from again?
-        return Const(0, kind, ident, expr)
+        return Const(const.span + semicolon.span, kind, ident, expr)
 
     def parse_struct(self) -> Struct:
         # StructDefinition = Keyword::STRUCT Identifier LeftBrace (Field Comma)* RightBrace SemiColon
 
-        self.parse_keyword(lex.KeywordKind.STRUCT)
+        struct = self.parse_keyword(lex.KeywordKind.STRUCT)
 
         ident = self.parse_identifier()
 
@@ -204,14 +287,14 @@ class Parser:
             self.parse_token(lex.Comma)
 
         self.parse_token(lex.RightBrace)
-        self.parse_token(lex.SemiColon)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return Struct(0, ident, fields)
+        return Struct(struct.span + semicolon.span, ident, fields)
 
     def parse_enum(self) -> Enum:
         # EnumDefinition = Keyword::ENUM Identifier LeftBrace (Identifier Comma)* RightBrace SemiColon
 
-        self.parse_keyword(lex.KeywordKind.ENUM)
+        enum = self.parse_keyword(lex.KeywordKind.ENUM)
 
         ident = self.parse_identifier()
 
@@ -235,48 +318,22 @@ class Parser:
             self.parse_token(lex.Comma)
 
         self.parse_token(lex.RightBrace)
-        self.parse_token(lex.SemiColon)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return Enum(0, ident, variants)
+        return Enum(enum.span + semicolon.span, ident, variants)
 
     def parse_typedef(self) -> Typedef:
         # TypdefDefinition = Keyword::TYPEDEF Type Identifier SemiColon
 
-        self.parse_keyword(lex.KeywordKind.TYPEDEF)
+        typedef = self.parse_keyword(lex.KeywordKind.TYPEDEF)
 
         kind = self.parse_type()
 
         ident = self.parse_identifier()
 
-        self.parse_token(lex.SemiColon)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return Typedef(0, kind, ident)
-
-    def parse_module(self) -> Module:
-        # ModuleDefinition = Keyword::MODULE Identifier LeftBrace (Definitions)* RightBrace SemiColon
-
-        self.parse_keyword(lex.KeywordKind.MODULE)
-
-        ident = self.parse_identifier()
-
-        self.parse_token(lex.LeftBrace)
-
-        definitions = []
-
-        while True:
-            try:
-                definition = self.parse_definition()
-            except UnexpectedToken:
-                break
-            except ParseError:
-                raise ParseError
-            else:
-                definitions.append(definition)
-
-        self.parse_token(lex.RightBrace)
-        self.parse_token(lex.SemiColon)
-
-        return Module(0, ident, definitions)
+        return Typedef(typedef.span + semicolon.span, kind, ident)
 
     def parse_type(self) -> Type:
         # Type = Keyword(Int)
@@ -296,11 +353,11 @@ class Parser:
         # a Type and can return.
         for token, primitive in primitives:
             try:
-                self.parse_keyword(token)
+                keyword = self.parse_keyword(token)
             except UnexpectedToken:
                 continue
             else:
-                return Type(0, primitive)
+                return Type(keyword.span, primitive)
 
         # If no PrimitiveType could be parsed, then the Type must be an Identifier.
         # This Identifier corresponds to the name of a user-defined type, maybe via
@@ -308,10 +365,15 @@ class Parser:
         # since this is the last possibility for a valid Type.
         ident = self.parse_identifier()
 
-        return Type(0, ident)
+        return Type(ident.span, ident)
 
     def parse_field(self) -> Field:
-        raise NotImplementedError
+        # Field = Type Identifier
+
+        type = self.parse_type()
+        ident = self.parse_identifier()
+
+        return Field(type.span + ident.span, type, ident)
 
     def parse_expression(self) -> Expression:
         # Expression = Identifier | Integer
@@ -328,23 +390,3 @@ class Parser:
         # This means that no Expression could be parsed since we've
         # already tried to parse an Identifier.
         return self.parse_integer()
-
-    def parse_token(self, kind: typing.Type[lex.TokenKind]) -> lex.Token:
-        raise NotImplementedError
-
-    def parse_keyword(self, kind: lex.KeywordKind) -> lex.Keyword:
-        peeked = self.peek()
-
-        if peeked is None:
-            raise UnexpectedEOF
-
-        if not isinstance(peeked, Keyword):
-            raise UnexpectedToken
-
-        if peeked.kind != kind:
-            raise UnexpectedToken
-
-        return Keyword(0, kind)
-
-    def parse_identifier(self) -> Identifier:
-        raise NotImplementedError
