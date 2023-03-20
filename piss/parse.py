@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import enum
 from piss import lex
 import typing
+from piss.lex import TokenKindVariant, TokenKindTag
 
 
 @dataclass
@@ -29,23 +30,37 @@ class Identifier(Node):
 
 
 @dataclass
-class PrimitiveType(enum.Enum):
+class PrimitiveKind(enum.Enum):
     UINT = enum.auto()
     INT = enum.auto()
 
 
-@dataclass
-class Type(Node):
-    """
-    Represents a Type in a PISS AST.
+@enum.unique
+class TypeTag(enum.Enum):
+    PRIMITIVE = enum.auto()
+    IDENTIFIER = enum.auto()
+    ARRAY = enum.auto()
 
-    Parameters:
-        name: PrimitiveType | Identifier - The name of the type. Either a primitive (builtin) type
-            or an identifier (user defined) type.
-    """
 
-    name: PrimitiveType | Identifier
-    # arity: int = 0
+class TypeVariant:
+    @dataclass
+    class Primitive(Node):
+        type: PrimitiveKind
+        tag: typing.Literal[TypeTag.PRIMITIVE] = TypeTag.PRIMITIVE
+
+    @dataclass
+    class Identifier(Node):
+        type: Identifier
+        tag: typing.Literal[TypeTag.IDENTIFIER] = TypeTag.IDENTIFIER
+
+    @dataclass
+    class Array(Node):
+        type: "Type"
+        length: int
+        tag: typing.Literal[TypeTag.ARRAY] = TypeTag.ARRAY
+
+
+Type = TypeVariant.Primitive | TypeVariant.Identifier | TypeVariant.Array
 
 
 @dataclass
@@ -153,14 +168,17 @@ class Parser:
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, lex.Keyword):
+        if not isinstance(peeked, TokenKindVariant.Keyword):
             raise UnexpectedToken
 
         if peeked.keyword != kind:
             raise UnexpectedToken
 
         next = self.next_then_unwrap()
-        return Keyword(next.span, typing.cast(lex.Keyword, next.kind).keyword)
+        if next.kind.tag is not TokenKindTag.KEYWORD:
+            raise UnexpectedToken
+
+        return Keyword(next.span, next.kind.keyword)
 
     def parse_identifier(self) -> Identifier:
         peeked = self.peek()
@@ -168,11 +186,14 @@ class Parser:
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, lex.Identifier):
+        if not isinstance(peeked, TokenKindVariant.Identifier):
             raise UnexpectedToken
 
         next = self.next_then_unwrap()
-        return Identifier(next.span, typing.cast(lex.Identifier, next.kind).name)
+        if next.kind.tag is not TokenKindTag.IDENTIFIER:
+            raise UnexpectedToken
+
+        return Identifier(next.span, next.kind.name)
 
     def parse_integer(self) -> Integer:
         peeked = self.peek()
@@ -180,11 +201,14 @@ class Parser:
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, lex.Integer):
+        if not isinstance(peeked, TokenKindVariant.Integer):
             raise UnexpectedToken
 
         next = self.next_then_unwrap()
-        return Integer(next.span, typing.cast(lex.Integer, next.kind).value)
+        if next.kind.tag is not TokenKindTag.INTEGER:
+            raise UnexpectedEOF
+
+        return Integer(next.span, next.kind.value)
 
     def parse_expression(self) -> Expression:
         # Expression = Identifier | Integer
@@ -213,8 +237,8 @@ class Parser:
         # TODO: Handle array types and add tests
 
         primitives = [
-            (lex.KeywordKind.UINT, PrimitiveType.UINT),
-            (lex.KeywordKind.INT, PrimitiveType.INT),
+            (lex.KeywordKind.UINT, PrimitiveKind.UINT),
+            (lex.KeywordKind.INT, PrimitiveKind.INT),
         ]
 
         # Search for a Keyword token corresponding to the PrimitiveType
@@ -227,7 +251,7 @@ class Parser:
             except UnexpectedToken:
                 continue
             else:
-                return Type(type_base.span, primitive)
+                return TypeVariant.Primitive(type_base.span, primitive)
 
         # If no PrimitiveType could be parsed, then the Type base must be an Identifier.
         # This Identifier corresponds to the name of a user-defined type, maybe via
@@ -236,8 +260,7 @@ class Parser:
         ident = self.parse_identifier()
 
         # Now we check if this type is an array type.
-
-        return Type(ident.span, ident)
+        return TypeVariant.Identifier(ident.span, ident)
 
     def parse_field(self) -> Field:
         # Field = Type Identifier
@@ -257,11 +280,11 @@ class Parser:
         kind = self.parse_type()
         ident = self.parse_identifier()
 
-        self.parse_token(lex.Equals)
+        self.parse_token(TokenKindVariant.Equals)
 
         expr = self.parse_expression()
 
-        semicolon = self.parse_token(lex.SemiColon)
+        semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
         return Const(const.span + semicolon.span, kind, ident, expr)
 
@@ -272,7 +295,7 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(lex.LeftBrace)
+        self.parse_token(TokenKindVariant.LeftBrace)
 
         # An enum can contain any number of fields in it, which means we need to loop in order to parse
         # them all. A variant is defined as an Identifier that must be followed by a Comma.
@@ -289,10 +312,10 @@ class Parser:
 
             # If we successfully parsed an Identifier then it must be followed by a Comma, do don't catch any
             # exceptions which may occur.
-            self.parse_token(lex.Comma)
+            self.parse_token(TokenKindVariant.Comma)
 
-        self.parse_token(lex.RightBrace)
-        semicolon = self.parse_token(lex.SemiColon)
+        self.parse_token(TokenKindVariant.RightBrace)
+        semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
         return Struct(struct.span + semicolon.span, ident, fields)
 
@@ -303,7 +326,7 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(lex.LeftBrace)
+        self.parse_token(TokenKindVariant.LeftBrace)
 
         # An enum can contain any number of variants in it, which means we need to loop in order to parse
         # them all. A variant is defined as an Identifier that must be followed by a Comma.
@@ -320,10 +343,10 @@ class Parser:
 
             # If we successfully parsed an Identifier then it must be followed by a Comma, so don't catch any
             # exceptions which may occur.
-            self.parse_token(lex.Comma)
+            self.parse_token(TokenKindVariant.Comma)
 
-        self.parse_token(lex.RightBrace)
-        semicolon = self.parse_token(lex.SemiColon)
+        self.parse_token(TokenKindVariant.RightBrace)
+        semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
         return Enum(enum.span + semicolon.span, ident, variants)
 
@@ -338,7 +361,7 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        semicolon = self.parse_token(lex.SemiColon)
+        semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
         return Typedef(typedef.span + semicolon.span, kind, ident)
 
@@ -376,7 +399,7 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(lex.LeftBrace)
+        self.parse_token(TokenKindVariant.LeftBrace)
 
         definitions = []
 
@@ -390,7 +413,7 @@ class Parser:
             else:
                 definitions.append(definition)
 
-        self.parse_token(lex.RightBrace)
-        semicolon = self.parse_token(lex.SemiColon)
+        self.parse_token(TokenKindVariant.RightBrace)
+        semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
         return Module(module.span + semicolon.span, ident, definitions)
