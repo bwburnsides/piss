@@ -8,29 +8,28 @@ from piss.parse import Parser, TypeVariant, DefinitionVariant
 import piss.lex as lex
 from piss.lex import KeywordKind, Span, TokenKindVariant, TokenKindTag
 from functools import partial
-import typing
-from typing import Callable
+from typing import Callable, NamedTuple
 
 SimpleToken = partial(lex.Token, span=Span())
 
 
-class SimpleFieldType(typing.NamedTuple):
+class SimpleFieldType(NamedTuple):
     type: TokenKindVariant.Identifier
     name: TokenKindVariant.Identifier
     node: parse.Field
 
 
-class PrimitiveTypedefType(typing.NamedTuple):
+class PrimitiveTypedefType(NamedTuple):
     tokens: list[lex.Token]
     node: DefinitionVariant.Typedef
 
 
-class MultiVariantEnumType(typing.NamedTuple):
+class MultiVariantEnumType(NamedTuple):
     tokens: list[lex.Token]
     node: DefinitionVariant.Enum
 
 
-class MultiFieldStructType(typing.NamedTuple):
+class MultiFieldStructType(NamedTuple):
     tokens: list[lex.Token]
     node: DefinitionVariant.Struct
 
@@ -673,7 +672,7 @@ def test_parse_multiple_definitions(
         multi_variant_enum.node,
     ]
 
-    definitions = []
+    definitions: list[parse.Definition] = []
 
     parser = Parser(tokens)
 
@@ -689,7 +688,7 @@ def test_parse_module(
     multi_field_struct: MultiFieldStructType,
     multi_variant_enum: MultiVariantEnumType,
 ) -> None:
-    tokens = []
+    tokens: list[lex.Token] = []
 
     tokens.append(SimpleToken(TokenKindVariant.Keyword(KeywordKind.MODULE)))
     tokens.append(SimpleToken(TokenKindVariant.Identifier("MyModule")))

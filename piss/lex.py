@@ -108,7 +108,7 @@ class Span:
     end: int = 0
 
     def __add__(self, other: "Span") -> "Span":
-        if not isinstance(other, Span):
+        if not isinstance(other, Span):  # pyright: reportUnnecessaryIsInstance=false
             return NotImplemented  # type: ignore[unreachable]
 
         return Span(self.start, other.end)
@@ -470,7 +470,7 @@ def tokenize(data: str) -> list[Token]:
     """
 
     tokenizer = Tokenizer(data)
-    tokens = []
+    tokens: list[Token] = []
 
     while True:
         result = tokenizer.next_token()

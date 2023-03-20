@@ -41,7 +41,7 @@ def test_fail_tokenize_identifier_or_keyword(
     input: str, expected_exception: Type[lex.LexError]
 ) -> None:
     with pytest.raises(expected_exception):
-        lex.tokenize_identifier_or_keyword(input),
+        lex.tokenize_identifier_or_keyword(input)
 
 
 @pytest.mark.parametrize(

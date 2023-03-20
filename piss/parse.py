@@ -5,8 +5,7 @@ Tools for parsing the PISS grammer.
 from dataclasses import dataclass
 import enum
 from piss import lex
-import typing
-from typing import Literal
+from typing import Literal, Callable
 from piss.lex import TokenKindTag
 
 
@@ -69,18 +68,18 @@ class TypeVariant:
     @dataclass
     class Primitive(Node):
         type: PrimitiveKind
-        tag: typing.Literal[TypeTag.PRIMITIVE] = TypeTag.PRIMITIVE
+        tag: Literal[TypeTag.PRIMITIVE] = TypeTag.PRIMITIVE
 
     @dataclass
     class Identifier(Node):
         type: Identifier
-        tag: typing.Literal[TypeTag.IDENTIFIER] = TypeTag.IDENTIFIER
+        tag: Literal[TypeTag.IDENTIFIER] = TypeTag.IDENTIFIER
 
     @dataclass
     class Array(Node):
         type: "Type"
         length: Expression
-        tag: typing.Literal[TypeTag.ARRAY] = TypeTag.ARRAY
+        tag: Literal[TypeTag.ARRAY] = TypeTag.ARRAY
 
 
 Type = TypeVariant.Primitive | TypeVariant.Identifier | TypeVariant.Array
@@ -186,7 +185,7 @@ class Parser:
 
     def __init__(self, tokens: list[lex.Token]):
         self.tokens = tokens
-        self.current_index = 0
+        self.index = 0
         self.state: list[int] = []
 
     def peek(self) -> lex.TokenKind | None:
@@ -199,7 +198,7 @@ class Parser:
         """
 
         try:
-            current_token = self.tokens[self.current_index]
+            current_token = self.tokens[self.index]
         except IndexError:
             return None
 
@@ -216,12 +215,12 @@ class Parser:
             UnexpectedEOF - Stream was exhausted.
         """
 
-        # try:
-        current_token = self.tokens[self.current_index]
-        # except IndexError:
-        #     raise UnexpectedEOF
+        try:
+            current_token = self.tokens[self.index]
+        except IndexError:
+            raise UnexpectedEOF
 
-        self.current_index += 1
+        self.index += 1
 
         return current_token
 
@@ -230,25 +229,22 @@ class Parser:
         Store current state to stack.
         """
 
-        self.state.append(self.current_index)
+        self.state.append(self.index)
 
     def pop(self) -> None:
         """
         Restore current state from stack.
         """
 
-        try:
-            self.current_index = self.state.pop()
-        except IndexError:
-            raise ParseError
+        self.index = self.drop()
 
-    def drop(self) -> None:
+    def drop(self) -> int:
         """
         Drop current state from stack.
         """
 
         try:
-            self.state.pop()
+            return self.state.pop()
         except IndexError:
             raise ParseError
 
@@ -292,32 +288,18 @@ class Parser:
             UnexpectedToken - Token was not expected type.
         """
 
-        # token = self.parse_token(TokenKindTag.KEYWORD)
-        # if token.kind.tag is not TokenKindTag.KEYWORD:
-        #     raise UnexpectedToken
-
-        # if token.kind.keyword is not kind:
-        #     raise UnexpectedToken
-
-        # return Keyword(token.span, token.kind.keyword)
-
-        peeked = self.peek()
-
-        if peeked is None:
-            raise UnexpectedEOF
-
-        if peeked.tag is not TokenKindTag.KEYWORD:
-            # if not isinstance(peeked, TokenKindVariant.Keyword):
+        self.push()
+        token = self.parse_token(TokenKindTag.KEYWORD)
+        if token.kind.tag is not TokenKindTag.KEYWORD:
+            self.pop()
             raise UnexpectedToken
 
-        if peeked.keyword is not kind:
+        if token.kind.keyword is not kind:
+            self.pop()
             raise UnexpectedToken
 
-        next = self.next()
-        if next.kind.tag is not TokenKindTag.KEYWORD:
-            raise UnexpectedToken
-
-        return Keyword(next.span, next.kind.keyword)
+        self.drop()
+        return Keyword(token.span, token.kind.keyword)
 
     def parse_identifier(self) -> Identifier:
         """
@@ -331,25 +313,11 @@ class Parser:
             UnexpectedToken - Token was not Identifier.
         """
 
-        # token = self.parse_token(TokenKindTag.IDENTIFIER)
-        # if token.kind.tag is not TokenKindTag.IDENTIFIER:
-        #     raise UnexpectedToken
-
-        # return Identifier(token.span, token.kind.name)
-
-        peeked = self.peek()
-
-        if peeked is None:
-            raise UnexpectedEOF
-
-        if peeked.tag is not TokenKindTag.IDENTIFIER:
+        token = self.parse_token(TokenKindTag.IDENTIFIER)
+        if token.kind.tag is not TokenKindTag.IDENTIFIER:
             raise UnexpectedToken
 
-        next = self.next()
-        if next.kind.tag is not TokenKindTag.IDENTIFIER:
-            raise UnexpectedToken
-
-        return Identifier(next.span, next.kind.name)
+        return Identifier(token.span, token.kind.name)
 
     def parse_integer(self) -> Integer:
         """
@@ -363,19 +331,11 @@ class Parser:
             UnexpectedToken - Token was not Integer.
         """
 
-        peeked = self.peek()
-
-        if peeked is None:
-            raise UnexpectedEOF
-
-        if peeked.tag is not TokenKindTag.INTEGER:
+        token = self.parse_token(TokenKindTag.INTEGER)
+        if token.kind.tag is not TokenKindTag.INTEGER:
             raise UnexpectedToken
 
-        next = self.next()
-        if next.kind.tag is not TokenKindTag.INTEGER:
-            raise UnexpectedEOF
-
-        return Integer(next.span, next.kind.value)
+        return Integer(token.span, token.kind.value)
 
     def parse_expression(self) -> Expression:
         """
@@ -556,7 +516,7 @@ class Parser:
 
         # An enum can contain any number of fields in it, which means we need to loop in order to parse
         # them all. A variant is defined as an Identifier that must be followed by a Comma.
-        fields = []
+        fields: list[Field] = []
         while True:
             # Attempt to parse a Field. If there is an UnexpectedToken, then there is not a field at the
             # front of the Token stream and we are done parsing fields and can break.
@@ -601,7 +561,7 @@ class Parser:
 
         # An enum can contain any number of variants in it, which means we need to loop in order to parse
         # them all. A variant is defined as an Identifier that must be followed by a Comma.
-        variants = []
+        variants: list[Identifier] = []
         while True:
             # Attempt to parse an Identifier, which names the variant. If there is an UnexpectedToken, then
             # there is not a variant at the front of the Token stream and we are done parsing variants and can break.
@@ -665,7 +625,7 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Definition.
         """
 
-        definition_parsers: list[typing.Callable[[], Definition]] = [
+        definition_parsers: list[Callable[[], Definition]] = [
             self.parse_const,
             self.parse_struct,
             self.parse_enum,
@@ -714,7 +674,7 @@ class Parser:
 
         self.parse_token(TokenKindTag.LEFT_BRACE)
 
-        definitions = []
+        definitions: list[Definition] = []
 
         while True:
             try:
