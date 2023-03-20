@@ -4,7 +4,7 @@ Tools for tokenizing the PISS lexicon.
 
 from dataclasses import dataclass
 import enum
-from typing import Callable, Literal, overload
+from typing import Callable, Literal
 
 
 class KeywordKind(enum.Enum):

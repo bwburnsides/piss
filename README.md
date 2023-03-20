@@ -44,7 +44,7 @@ Field = Type Identifier
 
 ### ConstDefinition
 ```
-ConstDefinition = Keyword::CONST Type Identififer Equals Expression SemiColon
+ConstDefinition = Keyword::CONST Field Equals Expression SemiColon
 ```
 
 ### StructDefinition

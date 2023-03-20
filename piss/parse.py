@@ -42,6 +42,11 @@ class TypeTag(enum.Enum):
     ARRAY = enum.auto()
 
 
+@dataclass
+class Expression(Node):
+    expr: Identifier | Integer
+
+
 class TypeVariant:
     @dataclass
     class Primitive(Node):
@@ -56,16 +61,11 @@ class TypeVariant:
     @dataclass
     class Array(Node):
         type: "Type"
-        length: int
+        length: Expression
         tag: typing.Literal[TypeTag.ARRAY] = TypeTag.ARRAY
 
 
 Type = TypeVariant.Primitive | TypeVariant.Identifier | TypeVariant.Array
-
-
-@dataclass
-class Expression(Node):
-    expr: Identifier | Integer
 
 
 @dataclass
@@ -230,16 +230,16 @@ class Parser:
         return Expression(integer.span, integer)
 
     def parse_type(self) -> Type:
-        # Type = Keyword(Int)
+        # Type = PrimitiveType
         #       | Identifier
         #       | Type LeftBracket Expression RightBracket
-
-        # TODO: Handle array types and add tests
 
         primitives = [
             (lex.KeywordKind.UINT, PrimitiveKind.UINT),
             (lex.KeywordKind.INT, PrimitiveKind.INT),
         ]
+
+        parsed_type: Type | None = None
 
         # Search for a Keyword token corresponding to the PrimitiveType
         # KeywordKind. If there is an UnexpectedToken, then we'll try to parse
@@ -247,20 +247,47 @@ class Parser:
         # the base of a Type and can progress to checking for array types.
         for keyword, primitive in primitives:
             try:
-                type_base = self.parse_keyword(keyword)
+                parsed_primitive_type_keyword = self.parse_keyword(keyword)
             except UnexpectedToken:
                 continue
             else:
-                return TypeVariant.Primitive(type_base.span, primitive)
+                parsed_type = TypeVariant.Primitive(
+                    parsed_primitive_type_keyword.span, primitive
+                )
 
         # If no PrimitiveType could be parsed, then the Type base must be an Identifier.
         # This Identifier corresponds to the name of a user-defined type, maybe via
         # a typedef, struct, or enum definition. Don't try to catch an exceptions
         # since this is the last possibility for a valid Type base.
-        ident = self.parse_identifier()
+        if parsed_type is None:
+            ident = self.parse_identifier()
+            parsed_type = TypeVariant.Identifier(ident.span, ident)
+
+        start_span = parsed_type.span
 
         # Now we check if this type is an array type.
-        return TypeVariant.Identifier(ident.span, ident)
+        while True:
+            # Loop with the following patter: look for left bracket, then look for experssion, then look for right bracket.
+            # If no left bracket, we're done (break and return)
+            # If anything after left bracket is missing, then unexpectedtoken / unexepectedeof
+
+            try:
+                self.parse_token(TokenKindVariant.LeftBracket)
+            except ParseError:
+                break
+
+            expr = self.parse_expression()
+            left_bracket = self.parse_token(TokenKindVariant.RightBracket)
+
+            end_span = left_bracket.span
+
+            parsed_type = TypeVariant.Array(
+                start_span + end_span,
+                parsed_type,
+                expr,
+            )
+
+        return parsed_type
 
     def parse_field(self) -> Field:
         # Field = Type Identifier
@@ -271,14 +298,11 @@ class Parser:
         return Field(type.span + ident.span, type, ident)
 
     def parse_const(self) -> Const:
-        # ConstDefinition = Keyword::CONST Type Identifier Equals Expression SemiColon
-
-        # TODO: use Field instead of Type Identifier and update grammar
+        # ConstDefinition = Keyword::CONST Field Equals Expression SemiColon
 
         const = self.parse_keyword(lex.KeywordKind.CONST)
 
-        kind = self.parse_type()
-        ident = self.parse_identifier()
+        field = self.parse_field()
 
         self.parse_token(TokenKindVariant.Equals)
 
@@ -286,7 +310,7 @@ class Parser:
 
         semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
-        return Const(const.span + semicolon.span, kind, ident, expr)
+        return Const(const.span + semicolon.span, field.kind, field.ident, expr)
 
     def parse_struct(self) -> Struct:
         # StructDefinition = Keyword::STRUCT Identifier LeftBrace (Field Comma)* RightBrace SemiColon
@@ -357,13 +381,11 @@ class Parser:
 
         typedef = self.parse_keyword(lex.KeywordKind.TYPEDEF)
 
-        kind = self.parse_type()
-
-        ident = self.parse_identifier()
+        field = self.parse_field()
 
         semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
-        return Typedef(typedef.span + semicolon.span, kind, ident)
+        return Typedef(typedef.span + semicolon.span, field.kind, field.ident)
 
     def parse_definition(self) -> Definition:
         definition_parsers = [

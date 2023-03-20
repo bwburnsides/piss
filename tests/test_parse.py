@@ -351,6 +351,55 @@ def test_parse_identifier_type() -> None:
     assert parser.parse_type() == expected_node
 
 
+def test_parse_array_type() -> None:
+    # int[5]
+
+    expected_node = TypeVariant.Array(
+        Span(),
+        TypeVariant.Primitive(Span(), parse.PrimitiveKind.INT),
+        parse.Expression(Span(), parse.Integer(Span(), 5)),
+    )
+
+    parser = Parser(
+        [
+            SimpleToken(TokenKindVariant.Keyword(KeywordKind.INT)),
+            SimpleToken(TokenKindVariant.LeftBracket()),
+            SimpleToken(TokenKindVariant.Integer(5)),
+            SimpleToken(TokenKindVariant.RightBracket()),
+        ]
+    )
+
+    assert parser.parse_type() == expected_node
+
+
+def test_parse_nested_array_type() -> None:
+    # int[5][ConstFoo]
+
+    expected_node = TypeVariant.Array(
+        Span(),
+        TypeVariant.Array(
+            Span(),
+            TypeVariant.Primitive(Span(), parse.PrimitiveKind.INT),
+            parse.Expression(Span(), parse.Integer(Span(), 5)),
+        ),
+        parse.Expression(Span(), parse.Identifier(Span(), "ConstFoo")),
+    )
+
+    parser = Parser(
+        [
+            SimpleToken(TokenKindVariant.Keyword(KeywordKind.INT)),
+            SimpleToken(TokenKindVariant.LeftBracket()),
+            SimpleToken(TokenKindVariant.Integer(5)),
+            SimpleToken(TokenKindVariant.RightBracket()),
+            SimpleToken(TokenKindVariant.LeftBracket()),
+            SimpleToken(TokenKindVariant.Identifier("ConstFoo")),
+            SimpleToken(TokenKindVariant.RightBracket()),
+        ]
+    )
+
+    assert parser.parse_type() == expected_node
+
+
 def test_parse_field_with_primitive_type() -> None:
     type = SimpleToken(TokenKindVariant.Keyword(KeywordKind.INT))
     ident = SimpleToken(TokenKindVariant.Identifier("foo"))
