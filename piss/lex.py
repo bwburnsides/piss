@@ -7,6 +7,20 @@ import enum
 from typing import Callable, Literal
 
 
+class KeywordKind(enum.Enum):
+    """
+    KeywordKind enumerates the keywords which are legal in PISS IDL.
+    """
+
+    CONST = "const"
+    STRUCT = "struct"
+    ENUM = "enum"
+    TYPEDEF = "typedef"
+    MODULE = "module"
+    UINT = "uint"
+    INT = "int"
+
+
 @enum.unique
 class TokenKindTag(enum.Enum):
     """
@@ -23,20 +37,6 @@ class TokenKindTag(enum.Enum):
     SEMICOLON = enum.auto()
     COMMA = enum.auto()
     EQUALS = enum.auto()
-
-
-class KeywordKind(enum.Enum):
-    """
-    KeywordKind enumerates the keywords which are legal in PISS IDL.
-    """
-
-    CONST = "const"
-    STRUCT = "struct"
-    ENUM = "enum"
-    TYPEDEF = "typedef"
-    MODULE = "module"
-    UINT = "uint"
-    INT = "int"
 
 
 class TokenKindVariant:
@@ -126,10 +126,10 @@ class Token:
 
 class LexError(ValueError):
     """
-    Base Exception type for all exceptions used by PISS lexer.
+    Base Exception type for all exceptions used by PISS lex tools.
     """
 
-    pass
+    ...
 
 
 class UnexpectedEOF(LexError):
@@ -137,7 +137,7 @@ class UnexpectedEOF(LexError):
     Signifies that the end of input was unexpectedly reached while lexing.
     """
 
-    pass
+    ...
 
 
 class UnexpectedCharacter(LexError):
@@ -146,7 +146,7 @@ class UnexpectedCharacter(LexError):
     was encountered while lexing.
     """
 
-    pass
+    ...
 
 
 class NoMatch(LexError):
@@ -154,7 +154,7 @@ class NoMatch(LexError):
     Signifies that the scanned input did not contain an expected lexeme.
     """
 
-    pass
+    ...
 
 
 def take_while(data: str, pred: Callable[[str], bool]) -> tuple[str, int]:

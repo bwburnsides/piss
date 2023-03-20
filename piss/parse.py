@@ -7,13 +7,13 @@ import enum
 from piss import lex
 import typing
 from typing import Literal
-from piss.lex import TokenKindVariant, TokenKindTag
+from piss.lex import TokenKindTag
 
 
 @dataclass
 class Node:
     """
-    Represents a generic node in a PISS AST
+    Represents a generic node in a PISS AST.
     """
 
     span: lex.Span
@@ -53,7 +53,7 @@ class PrimitiveKind(enum.Enum):
 @enum.unique
 class TypeTag(enum.Enum):
     """
-    TypeTag enumerates the groups of types found in PISS grammar.
+    TypeTag enumerates the group of types found in PISS grammar.
     """
 
     PRIMITIVE = enum.auto()
@@ -62,6 +62,10 @@ class TypeTag(enum.Enum):
 
 
 class TypeVariant:
+    """
+    Contains Nodes representing the group of types found in PISS grammar.
+    """
+
     @dataclass
     class Primitive(Node):
         type: PrimitiveKind
@@ -90,6 +94,10 @@ class Field(Node):
 
 @enum.unique
 class DefinitionTag(enum.Enum):
+    """
+    DefinitionTags enumerates the Definitions found in PISS grammar.
+    """
+
     CONST = enum.auto()
     STRUCT = enum.auto()
     ENUM = enum.auto()
@@ -98,6 +106,10 @@ class DefinitionTag(enum.Enum):
 
 
 class DefinitionVariant:
+    """
+    Contains Nodes representing Definitions found in PISS grammar.
+    """
+
     @dataclass
     class Const(Node):
         kind: Identifier | Type
@@ -140,23 +152,52 @@ Definition = (
 
 
 class ParseError(ValueError):
+    """
+    Base Exception type for all exceptions used by PISS parse tools.
+    """
+
     ...
 
 
 class UnexpectedEOF(ParseError):
+    """
+    Signifies that the end of input was unexpectedly reached while parsing.
+    """
+
     ...
 
 
 class UnexpectedToken(ParseError):
+    """
+    Signifies that an unexpected character (probably illegal)
+    was encountered while lexing.
+    """
+
     ...
 
 
 class Parser:
+    """
+    Owns a stream of tokens and parser combinators to operate on it.
+
+    Parameters:
+        tokens: list[Token] - Stream of tokens to parse.
+    """
+
     def __init__(self, tokens: list[lex.Token]):
         self.tokens = tokens
         self.current_index = 0
+        self.state: list[int] = []
 
     def peek(self) -> lex.TokenKind | None:
+        """
+        Return type of current token without advancing stream pointer.
+
+        Returns:
+            None - Stream is exhausted.
+            TokenKind - Kind of token at front of stream.
+        """
+
         try:
             current_token = self.tokens[self.current_index]
         except IndexError:
@@ -164,91 +205,201 @@ class Parser:
 
         return current_token.kind
 
-    def next(self) -> lex.Token | None:
-        token = self.tokens[self.current_index]
+    def next(self) -> lex.Token:
+        """
+        Return current token and advance the stream pointer.
 
-        if token is not None:
-            self.current_index += 1
+        Return:
+            Token - Token at front of stream.
 
-        return token
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+        """
 
-    def next_then_unwrap(self) -> lex.Token:
-        token_or_none = self.next()
+        # try:
+        current_token = self.tokens[self.current_index]
+        # except IndexError:
+        #     raise UnexpectedEOF
 
-        if token_or_none is None:
-            raise UnexpectedEOF
+        self.current_index += 1
 
-        return token_or_none
+        return current_token
 
-    def parse_token(self, kind: typing.Type[lex.TokenKind]) -> lex.Token:
+    def push(self) -> None:
+        """
+        Store current state to stack.
+        """
+
+        self.state.append(self.current_index)
+
+    def pop(self) -> None:
+        """
+        Restore current state from stack.
+        """
+
+        try:
+            self.current_index = self.state.pop()
+        except IndexError:
+            raise ParseError
+
+    def drop(self) -> None:
+        """
+        Drop current state from stack.
+        """
+
+        try:
+            self.state.pop()
+        except IndexError:
+            raise ParseError
+
+    def parse_token(self, kind: TokenKindTag) -> lex.Token:
+        """
+        Parse token of given kind from token stream.
+
+        Parameters:
+            kind: TokenKindTag - Type of token to parse.
+
+        Returns:
+            Token - Parsed token.
+
+        Raises:
+            UnexepctedEOF - Stream was exhausted.
+            UnexpectedToken - Token was not expected type.
+        """
+
         peeked = self.peek()
 
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, kind):
+        if peeked.tag is not kind:
             raise UnexpectedToken
 
-        return self.next_then_unwrap()
+        return self.next()
 
     def parse_keyword(self, kind: lex.KeywordKind) -> Keyword:
+        """
+        Parse Keyword given kind from token stream.
+
+        Parameters:
+            kind: KeywordKind - Kind of Keyword to parse.
+
+        Returns:
+            Keyword - Parsed Keyword.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Token was not expected type.
+        """
+
+        # token = self.parse_token(TokenKindTag.KEYWORD)
+        # if token.kind.tag is not TokenKindTag.KEYWORD:
+        #     raise UnexpectedToken
+
+        # if token.kind.keyword is not kind:
+        #     raise UnexpectedToken
+
+        # return Keyword(token.span, token.kind.keyword)
+
         peeked = self.peek()
 
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, TokenKindVariant.Keyword):
+        if peeked.tag is not TokenKindTag.KEYWORD:
+            # if not isinstance(peeked, TokenKindVariant.Keyword):
             raise UnexpectedToken
 
-        if peeked.keyword != kind:
+        if peeked.keyword is not kind:
             raise UnexpectedToken
 
-        next = self.next_then_unwrap()
+        next = self.next()
         if next.kind.tag is not TokenKindTag.KEYWORD:
             raise UnexpectedToken
 
         return Keyword(next.span, next.kind.keyword)
 
     def parse_identifier(self) -> Identifier:
+        """
+        Parse Identifier from token stream.
+
+        Returns:
+            Identifier - Parsed Identifier.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Token was not Identifier.
+        """
+
+        # token = self.parse_token(TokenKindTag.IDENTIFIER)
+        # if token.kind.tag is not TokenKindTag.IDENTIFIER:
+        #     raise UnexpectedToken
+
+        # return Identifier(token.span, token.kind.name)
+
         peeked = self.peek()
 
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, TokenKindVariant.Identifier):
+        if peeked.tag is not TokenKindTag.IDENTIFIER:
             raise UnexpectedToken
 
-        next = self.next_then_unwrap()
+        next = self.next()
         if next.kind.tag is not TokenKindTag.IDENTIFIER:
             raise UnexpectedToken
 
         return Identifier(next.span, next.kind.name)
 
     def parse_integer(self) -> Integer:
+        """
+        Parse Integer from token stream.
+
+        Returns:
+            Integer - Parsed Integer.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Token was not Integer.
+        """
+
         peeked = self.peek()
 
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, TokenKindVariant.Integer):
+        if peeked.tag is not TokenKindTag.INTEGER:
             raise UnexpectedToken
 
-        next = self.next_then_unwrap()
+        next = self.next()
         if next.kind.tag is not TokenKindTag.INTEGER:
             raise UnexpectedEOF
 
         return Integer(next.span, next.kind.value)
 
     def parse_expression(self) -> Expression:
-        # Expression = Identifier | Integer
+        """
+        Parse Expression from token stream.
+
+        Expression = Identifier | Integer
+
+        Returns:
+            Expression - Parsed Expression.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Expression.
+        """
 
         # Attempt to parse an Identitifer. If there is an UnexpectedToken, then we could
         # not successfully parse one, and now we'll try to parse an Integer.
+        self.push()
         try:
             ident = self.parse_identifier()
         except UnexpectedToken:
-            pass
+            self.pop()
         else:
+            self.drop()
             return Expression(ident.span, ident)
 
         # Don't try to catch UnexpectedToken here. If its raised that
@@ -259,9 +410,20 @@ class Parser:
         return Expression(integer.span, integer)
 
     def parse_type(self) -> Type:
-        # Type = PrimitiveType
-        #       | Identifier
-        #       | Type LeftBracket Expression RightBracket
+        """
+        Parse Type from token stream.
+
+        Type = PrimitiveType
+              | Identifier
+              | Type LeftBracket Expression RightBracket
+
+        Returns:
+            Type - Parsed Type.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Type.
+        """
 
         primitives = [
             (lex.KeywordKind.UINT, PrimitiveKind.UINT),
@@ -275,11 +437,14 @@ class Parser:
         # the next PrimitiveType KeywordKind. If there isn't, then we've parsed
         # the base of a Type and can progress to checking for array types.
         for keyword, primitive in primitives:
+            self.push()
             try:
                 parsed_primitive_type_keyword = self.parse_keyword(keyword)
             except UnexpectedToken:
+                self.pop()
                 continue
             else:
+                self.drop()
                 parsed_type = TypeVariant.Primitive(
                     parsed_primitive_type_keyword.span, primitive
                 )
@@ -296,17 +461,21 @@ class Parser:
 
         # Now we check if this type is an array type.
         while True:
-            # Loop with the following patter: look for left bracket, then look for experssion, then look for right bracket.
+            # Loop with the following pattern: look for left bracket, then look for experssion, then look for right bracket.
             # If no left bracket, we're done (break and return)
             # If anything after left bracket is missing, then unexpectedtoken / unexepectedeof
 
+            self.push()
             try:
-                self.parse_token(TokenKindVariant.LeftBracket)
+                self.parse_token(TokenKindTag.LEFT_BRACKET)
             except ParseError:
+                self.pop()
                 break
 
+            self.drop()
+
             expr = self.parse_expression()
-            left_bracket = self.parse_token(TokenKindVariant.RightBracket)
+            left_bracket = self.parse_token(TokenKindTag.RIGHT_BRACKET)
 
             end_span = left_bracket.span
 
@@ -319,7 +488,18 @@ class Parser:
         return parsed_type
 
     def parse_field(self) -> Field:
-        # Field = Type Identifier
+        """
+        Parse Field from token stream.
+
+        Field = Type Identifier
+
+        Returns:
+            Field - Parsed Field.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Field.
+        """
 
         type = self.parse_type()
         ident = self.parse_identifier()
@@ -327,30 +507,52 @@ class Parser:
         return Field(type.span + ident.span, type, ident)
 
     def parse_const(self) -> DefinitionVariant.Const:
-        # ConstDefinition = Keyword::CONST Field Equals Expression SemiColon
+        """
+        Parse Const from token stream.
+
+        ConstDefinition = Keyword::CONST Field Equals Expression SemiColon
+
+        Returns:
+            Const - Parsed Const.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Const.
+        """
 
         const = self.parse_keyword(lex.KeywordKind.CONST)
 
         field = self.parse_field()
 
-        self.parse_token(TokenKindVariant.Equals)
+        self.parse_token(TokenKindTag.EQUALS)
 
         expr = self.parse_expression()
 
-        semicolon = self.parse_token(TokenKindVariant.SemiColon)
+        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
 
         return DefinitionVariant.Const(
             const.span + semicolon.span, field.kind, field.ident, expr
         )
 
     def parse_struct(self) -> DefinitionVariant.Struct:
-        # StructDefinition = Keyword::STRUCT Identifier LeftBrace (Field Comma)* RightBrace SemiColon
+        """
+        Parse Struct from token stream.
+
+        StructDefinition = Keyword::STRUCT Identifier LeftBrace (Field Comma)* RightBrace SemiColon
+
+        Returns:
+            Struct - Parsed Struct.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Struct.
+        """
 
         struct = self.parse_keyword(lex.KeywordKind.STRUCT)
 
         ident = self.parse_identifier()
 
-        self.parse_token(TokenKindVariant.LeftBrace)
+        self.parse_token(TokenKindTag.LEFT_BRACE)
 
         # An enum can contain any number of fields in it, which means we need to loop in order to parse
         # them all. A variant is defined as an Identifier that must be followed by a Comma.
@@ -359,29 +561,43 @@ class Parser:
             # Attempt to parse a Field. If there is an UnexpectedToken, then there is not a field at the
             # front of the Token stream and we are done parsing fields and can break.
             try:
+                self.push()
                 field = self.parse_field()
             except UnexpectedToken:
+                self.pop()
                 break
             else:
+                self.drop()
                 fields.append(field)
 
             # If we successfully parsed an Identifier then it must be followed by a Comma, do don't catch any
             # exceptions which may occur.
-            self.parse_token(TokenKindVariant.Comma)
+            self.parse_token(TokenKindTag.COMMA)
 
-        self.parse_token(TokenKindVariant.RightBrace)
-        semicolon = self.parse_token(TokenKindVariant.SemiColon)
+        self.parse_token(TokenKindTag.RIGHT_BRACE)
+        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
 
         return DefinitionVariant.Struct(struct.span + semicolon.span, ident, fields)
 
     def parse_enum(self) -> DefinitionVariant.Enum:
-        # EnumDefinition = Keyword::ENUM Identifier LeftBrace (Identifier Comma)* RightBrace SemiColon
+        """
+        Parse Enum from token stream.
+
+        EnumDefinition = Keyword::ENUM Identifier LeftBrace (Identifier Comma)* RightBrace SemiColon
+
+        Returns:
+            Enum - Parsed Enum.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Enum.
+        """
 
         enum = self.parse_keyword(lex.KeywordKind.ENUM)
 
         ident = self.parse_identifier()
 
-        self.parse_token(TokenKindVariant.LeftBrace)
+        self.parse_token(TokenKindTag.LEFT_BRACE)
 
         # An enum can contain any number of variants in it, which means we need to loop in order to parse
         # them all. A variant is defined as an Identifier that must be followed by a Comma.
@@ -389,38 +605,66 @@ class Parser:
         while True:
             # Attempt to parse an Identifier, which names the variant. If there is an UnexpectedToken, then
             # there is not a variant at the front of the Token stream and we are done parsing variants and can break.
+            self.push()
             try:
                 variant = self.parse_identifier()
             except UnexpectedToken:
+                self.pop()
                 break
             else:
+                self.drop()
                 variants.append(variant)
 
             # If we successfully parsed an Identifier then it must be followed by a Comma, so don't catch any
             # exceptions which may occur.
-            self.parse_token(TokenKindVariant.Comma)
+            self.parse_token(TokenKindTag.COMMA)
 
-        self.parse_token(TokenKindVariant.RightBrace)
-        semicolon = self.parse_token(TokenKindVariant.SemiColon)
+        self.parse_token(TokenKindTag.RIGHT_BRACE)
+        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
 
         return DefinitionVariant.Enum(enum.span + semicolon.span, ident, variants)
 
     def parse_typedef(self) -> DefinitionVariant.Typedef:
-        # TypdefDefinition = Keyword::TYPEDEF Type Identifier SemiColon
+        """
+        Parse Typedef from token stream.
 
-        # TODO: use Field instead of Type Identifier and update grammar
+        TypdefDefinition = Keyword::TYPEDEF Field SemiColon
+
+        Returns:
+            Typedef - Parsed Typedef.
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Typedef.
+        """
 
         typedef = self.parse_keyword(lex.KeywordKind.TYPEDEF)
 
         field = self.parse_field()
 
-        semicolon = self.parse_token(TokenKindVariant.SemiColon)
+        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
 
         return DefinitionVariant.Typedef(
             typedef.span + semicolon.span, field.kind, field.ident
         )
 
     def parse_definition(self) -> Definition:
+        """
+        Parse Definition from token stream.
+
+        Definition = ConstDefinition
+                | StructDefinition
+                | EnumDefinition
+                | TypedefDefinition
+
+        Returns:
+            Definition - Parsed Definition
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Definition.
+        """
+
         definition_parsers: list[typing.Callable[[], Definition]] = [
             self.parse_const,
             self.parse_struct,
@@ -438,38 +682,56 @@ class Parser:
         # exception and continue onwards and attempt to parse the next type of definition.
 
         for parser in definition_parsers:
+            self.push()
             try:
                 return parser()
             except UnexpectedEOF:
+                self.pop()
                 raise UnexpectedEOF
             except UnexpectedToken:
+                self.drop()
                 continue
 
         raise UnexpectedToken
 
     def parse_module(self) -> DefinitionVariant.Module:
-        # ModuleDefinition = Keyword::MODULE Identifier LeftBrace (Definitions)* RightBrace SemiColon
+        """
+        Parse Definition from token stream.
+
+        Module = Keyword::MODULE Identifier LeftBrace Definition* RightBrace SemiColon
+
+        Returns:
+            Module - Parsed Module
+
+        Raises:
+            UnexpectedEOF - Stream was exhausted.
+            UnexpectedToken - Tokens could not parse into Module.
+        """
 
         module = self.parse_keyword(lex.KeywordKind.MODULE)
 
         ident = self.parse_identifier()
 
-        self.parse_token(TokenKindVariant.LeftBrace)
+        self.parse_token(TokenKindTag.LEFT_BRACE)
 
         definitions = []
 
         while True:
             try:
+                self.push()
                 definition = self.parse_definition()
             except UnexpectedToken:
+                self.pop()
                 break
             except ParseError:
+                self.pop()
                 raise ParseError
             else:
+                self.drop()
                 definitions.append(definition)
 
-        self.parse_token(TokenKindVariant.RightBrace)
-        semicolon = self.parse_token(TokenKindVariant.SemiColon)
+        self.parse_token(TokenKindTag.RIGHT_BRACE)
+        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
 
         return DefinitionVariant.Module(
             module.span + semicolon.span, ident, definitions

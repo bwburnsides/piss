@@ -195,7 +195,7 @@ def test_parse_single_token() -> None:
     expected_token = SimpleToken(TokenKindVariant.LeftBrace())
     parser = Parser([expected_token])
 
-    token = parser.parse_token(TokenKindVariant.LeftBrace)
+    token = parser.parse_token(TokenKindTag.LEFT_BRACE)
     assert token == expected_token
 
 
@@ -203,9 +203,9 @@ def test_parse_second_token() -> None:
     expected_token = SimpleToken(TokenKindVariant.RightBrace())
 
     parser = Parser([SimpleToken(TokenKindVariant.LeftBrace()), expected_token])
-    parser.parse_token(TokenKindVariant.LeftBrace)
+    parser.parse_token(TokenKindTag.LEFT_BRACE)
 
-    assert parser.parse_token(TokenKindVariant.RightBrace) == expected_token
+    assert parser.parse_token(TokenKindTag.RIGHT_BRACE) == expected_token
 
 
 def test_parse_keyword() -> None:
@@ -227,7 +227,7 @@ def test_parse_second_keyword() -> None:
             token,
         ]
     )
-    parser.parse_token(TokenKindVariant.RightBrace)
+    parser.parse_token(TokenKindTag.RIGHT_BRACE)
 
     assert parser.parse_keyword(KeywordKind.MODULE) == expected_node
 
@@ -256,7 +256,7 @@ def test_parse_second_identifier() -> None:
             token,
         ]
     )
-    parser.parse_token(TokenKindVariant.RightBrace)
+    parser.parse_token(TokenKindTag.RIGHT_BRACE)
 
     assert parser.parse_identifier() == expected_node
 
@@ -286,7 +286,7 @@ def test_parse_second_integer() -> None:
             token,
         ]
     )
-    parser.parse_token(TokenKindVariant.LeftBrace)
+    parser.parse_token(TokenKindTag.LEFT_BRACE)
 
     assert parser.parse_integer() == expected_node
 
@@ -323,8 +323,6 @@ def test_parse_identifier_expression() -> None:
 
 def test_parse_primitive_type() -> None:
     token = SimpleToken(TokenKindVariant.Keyword(KeywordKind.INT))
-    if token.kind.tag is not TokenKindTag.KEYWORD:
-        raise ValueError
 
     expected_node = TypeVariant.Primitive(
         token.span,

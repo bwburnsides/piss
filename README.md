@@ -49,7 +49,7 @@ ConstDefinition = Keyword::CONST Field Equals Expression SemiColon
 
 ### StructDefinition
 ```
-StructDefinition = Keyword::STRUCT Identifier Identifier LeftBrace (Field Comma)* RightBrace Semicolon
+StructDefinition = Keyword::STRUCT Identifier LeftBrace (Field Comma)* RightBrace Semicolon
 ```
 
 ### EnumDefinition
@@ -59,7 +59,7 @@ EnumDefinition = Keyword::ENUM Identifier LeftBrace (Identifier Comma)* RightBra
 
 ### TypedefDefinition
 ```
-Keyword::TYPEDEF Type Identifier SemiColon
+Keyword::TYPEDEF Field SemiColon
 ```
 
 ### Definition
