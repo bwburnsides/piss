@@ -4,7 +4,7 @@ Tests for functions in parse.py
 
 import pytest
 import piss.parse as parse
-from piss.parse import Parser, TypeVariant
+from piss.parse import Parser, TypeVariant, DefinitionVariant
 import piss.lex as lex
 from piss.lex import KeywordKind, Span, TokenKindVariant, TokenKindTag
 from functools import partial
@@ -22,17 +22,17 @@ class SimpleFieldType(typing.NamedTuple):
 
 class PrimitiveTypedefType(typing.NamedTuple):
     tokens: list[lex.Token]
-    node: parse.Typedef
+    node: DefinitionVariant.Typedef
 
 
 class MultiVariantEnumType(typing.NamedTuple):
     tokens: list[lex.Token]
-    node: parse.Enum
+    node: DefinitionVariant.Enum
 
 
 class MultiFieldStructType(typing.NamedTuple):
     tokens: list[lex.Token]
-    node: parse.Struct
+    node: DefinitionVariant.Struct
 
 
 SimpleFieldFixtureType: Callable[
@@ -75,7 +75,7 @@ PrimitiveTypedefFixtureType: Callable[
 
 @PrimitiveTypedefFixtureType
 def primitive_typedef() -> PrimitiveTypedefType:
-    node = parse.Typedef(
+    node = DefinitionVariant.Typedef(
         Span(),
         TypeVariant.Primitive(Span(), parse.PrimitiveKind.INT),
         parse.Identifier(Span(), "FooType"),
@@ -113,7 +113,7 @@ def multi_variant_enum() -> MultiVariantEnumType:
         SimpleToken(TokenKindVariant.SemiColon()),
     ]
 
-    node = parse.Enum(
+    node = DefinitionVariant.Enum(
         Span(),
         parse.Identifier(Span(), "Color"),
         [
@@ -182,7 +182,7 @@ def multi_field_struct() -> MultiFieldStructType:
         ident=parse.Identifier(ident_b.span, ident_b.kind.name),
     )
 
-    node = parse.Struct(
+    node = DefinitionVariant.Struct(
         Span(),
         parse.Identifier(Span(), "MyStruct"),
         [field_a, field_b],
@@ -431,7 +431,7 @@ def test_parse_const(simple_field: SimpleFieldType) -> None:
 
     # FooType foo = 5;
 
-    expected_node = parse.Const(
+    expected_node = DefinitionVariant.Const(
         Span(),
         simple_field.node.kind,
         simple_field.node.ident,
@@ -462,7 +462,7 @@ def test_parse_simple_struct(simple_field: SimpleFieldType) -> None:
     #   FooType foo,
     # };
 
-    expected_node = parse.Struct(
+    expected_node = DefinitionVariant.Struct(
         Span(),
         struct_ident,
         [
@@ -489,7 +489,7 @@ def test_parse_simple_struct(simple_field: SimpleFieldType) -> None:
 def test_parse_empty_struct() -> None:
     # struct MyStruct {};
 
-    expected_node = parse.Struct(
+    expected_node = DefinitionVariant.Struct(
         Span(),
         parse.Identifier(Span(), "MyStruct"),
         [],
@@ -575,7 +575,7 @@ def test_parse_simple_enum() -> None:
     #   RED,
     # };
 
-    expected_node = parse.Enum(
+    expected_node = DefinitionVariant.Enum(
         Span(), parse.Identifier(Span(), "Color"), [parse.Identifier(Span(), "RED")]
     )
 
@@ -597,7 +597,9 @@ def test_parse_simple_enum() -> None:
 def test_parse_empty_enum() -> None:
     # enum Color {};
 
-    expected_node = parse.Enum(Span(), parse.Identifier(Span(), "Color"), [])
+    expected_node = DefinitionVariant.Enum(
+        Span(), parse.Identifier(Span(), "Color"), []
+    )
 
     parser = Parser(
         [
@@ -635,7 +637,7 @@ def test_parse_typedef_with_primitive_type(
 def test_parse_typedef_with_ident_type() -> None:
     # typedef FooType BarType
 
-    expected_node = parse.Typedef(
+    expected_node = DefinitionVariant.Typedef(
         Span(),
         TypeVariant.Identifier(Span(), parse.Identifier(Span(), "FooType")),
         parse.Identifier(Span(), "BarType"),
@@ -700,7 +702,7 @@ def test_parse_module(
     tokens.append(SimpleToken(TokenKindVariant.RightBrace()))
     tokens.append(SimpleToken(TokenKindVariant.SemiColon()))
 
-    expected_node = parse.Module(
+    expected_node = DefinitionVariant.Module(
         Span(),
         parse.Identifier(Span(), "MyModule"),
         [

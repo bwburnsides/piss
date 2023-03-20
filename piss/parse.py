@@ -6,11 +6,16 @@ from dataclasses import dataclass
 import enum
 from piss import lex
 import typing
+from typing import Literal
 from piss.lex import TokenKindVariant, TokenKindTag
 
 
 @dataclass
 class Node:
+    """
+    Represents a generic node in a PISS AST
+    """
+
     span: lex.Span
 
 
@@ -30,21 +35,30 @@ class Identifier(Node):
 
 
 @dataclass
+class Expression(Node):
+    expr: Identifier | Integer
+
+
+@dataclass
 class PrimitiveKind(enum.Enum):
+    """
+    PrimitiveKind enumerates the primitive (builtin) types in PISS grammar.
+    These are represented by Keyword tokens.
+    """
+
     UINT = enum.auto()
     INT = enum.auto()
 
 
 @enum.unique
 class TypeTag(enum.Enum):
+    """
+    TypeTag enumerates the groups of types found in PISS grammar.
+    """
+
     PRIMITIVE = enum.auto()
     IDENTIFIER = enum.auto()
     ARRAY = enum.auto()
-
-
-@dataclass
-class Expression(Node):
-    expr: Identifier | Integer
 
 
 class TypeVariant:
@@ -74,52 +88,67 @@ class Field(Node):
     ident: Identifier
 
 
-@dataclass
-class Definition(Node):
-    pass
+@enum.unique
+class DefinitionTag(enum.Enum):
+    CONST = enum.auto()
+    STRUCT = enum.auto()
+    ENUM = enum.auto()
+    TYPEDEF = enum.auto()
+    MODULE = enum.auto()
 
 
-@dataclass
-class Const(Definition):
-    kind: Identifier | Type
-    ident: Identifier
-    expr: Expression
+class DefinitionVariant:
+    @dataclass
+    class Const(Node):
+        kind: Identifier | Type
+        ident: Identifier
+        expr: Expression
+        tag: Literal[DefinitionTag.CONST] = DefinitionTag.CONST
+
+    @dataclass
+    class Struct(Node):
+        ident: Identifier
+        fields: list[Field]
+        tag: Literal[DefinitionTag.STRUCT] = DefinitionTag.STRUCT
+
+    @dataclass
+    class Enum(Node):
+        ident: Identifier
+        variants: list[Identifier]
+        tag: Literal[DefinitionTag.ENUM] = DefinitionTag.ENUM
+
+    @dataclass
+    class Typedef(Node):
+        kind: Type
+        ident: Identifier
+        tag: Literal[DefinitionTag.TYPEDEF] = DefinitionTag.TYPEDEF
+
+    @dataclass
+    class Module(Node):
+        ident: Identifier
+        defs: list["Definition"]
+        tag: Literal[DefinitionTag.MODULE] = DefinitionTag.MODULE
 
 
-@dataclass
-class Struct(Definition):
-    ident: Identifier
-    fields: list[Field]
-
-
-@dataclass
-class Enum(Definition):
-    ident: Identifier
-    variants: list[Identifier]
-
-
-@dataclass
-class Typedef(Definition):
-    kind: Type
-    ident: Identifier
-
-
-@dataclass
-class Module(Definition):
-    ident: Identifier
-    defs: list[Definition]
+Definition = (
+    DefinitionVariant.Const
+    | DefinitionVariant.Struct
+    | DefinitionVariant.Enum
+    | DefinitionVariant.Typedef
+    | DefinitionVariant.Module
+)
 
 
 class ParseError(ValueError):
-    pass
+    ...
 
 
 class UnexpectedEOF(ParseError):
-    pass
+    ...
 
 
 class UnexpectedToken(ParseError):
-    pass
+    ...
 
 
 class Parser:
@@ -297,7 +326,7 @@ class Parser:
 
         return Field(type.span + ident.span, type, ident)
 
-    def parse_const(self) -> Const:
+    def parse_const(self) -> DefinitionVariant.Const:
         # ConstDefinition = Keyword::CONST Field Equals Expression SemiColon
 
         const = self.parse_keyword(lex.KeywordKind.CONST)
@@ -310,9 +339,11 @@ class Parser:
 
         semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
-        return Const(const.span + semicolon.span, field.kind, field.ident, expr)
+        return DefinitionVariant.Const(
+            const.span + semicolon.span, field.kind, field.ident, expr
+        )
 
-    def parse_struct(self) -> Struct:
+    def parse_struct(self) -> DefinitionVariant.Struct:
         # StructDefinition = Keyword::STRUCT Identifier LeftBrace (Field Comma)* RightBrace SemiColon
 
         struct = self.parse_keyword(lex.KeywordKind.STRUCT)
@@ -341,9 +372,9 @@ class Parser:
         self.parse_token(TokenKindVariant.RightBrace)
         semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
-        return Struct(struct.span + semicolon.span, ident, fields)
+        return DefinitionVariant.Struct(struct.span + semicolon.span, ident, fields)
 
-    def parse_enum(self) -> Enum:
+    def parse_enum(self) -> DefinitionVariant.Enum:
         # EnumDefinition = Keyword::ENUM Identifier LeftBrace (Identifier Comma)* RightBrace SemiColon
 
         enum = self.parse_keyword(lex.KeywordKind.ENUM)
@@ -372,9 +403,9 @@ class Parser:
         self.parse_token(TokenKindVariant.RightBrace)
         semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
-        return Enum(enum.span + semicolon.span, ident, variants)
+        return DefinitionVariant.Enum(enum.span + semicolon.span, ident, variants)
 
-    def parse_typedef(self) -> Typedef:
+    def parse_typedef(self) -> DefinitionVariant.Typedef:
         # TypdefDefinition = Keyword::TYPEDEF Type Identifier SemiColon
 
         # TODO: use Field instead of Type Identifier and update grammar
@@ -385,10 +416,12 @@ class Parser:
 
         semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
-        return Typedef(typedef.span + semicolon.span, field.kind, field.ident)
+        return DefinitionVariant.Typedef(
+            typedef.span + semicolon.span, field.kind, field.ident
+        )
 
     def parse_definition(self) -> Definition:
-        definition_parsers = [
+        definition_parsers: list[typing.Callable[[], Definition]] = [
             self.parse_const,
             self.parse_struct,
             self.parse_enum,
@@ -414,7 +447,7 @@ class Parser:
 
         raise UnexpectedToken
 
-    def parse_module(self) -> Module:
+    def parse_module(self) -> DefinitionVariant.Module:
         # ModuleDefinition = Keyword::MODULE Identifier LeftBrace (Definitions)* RightBrace SemiColon
 
         module = self.parse_keyword(lex.KeywordKind.MODULE)
@@ -438,4 +471,6 @@ class Parser:
         self.parse_token(TokenKindVariant.RightBrace)
         semicolon = self.parse_token(TokenKindVariant.SemiColon)
 
-        return Module(module.span + semicolon.span, ident, definitions)
+        return DefinitionVariant.Module(
+            module.span + semicolon.span, ident, definitions
+        )

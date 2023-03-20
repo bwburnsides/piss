@@ -7,6 +7,24 @@ import enum
 from typing import Callable, Literal
 
 
+@enum.unique
+class TokenKindTag(enum.Enum):
+    """
+    TokenKindTag enumerates the types of Tokens which are legal in PISS IDL.
+    """
+
+    KEYWORD = enum.auto()
+    IDENTIFIER = enum.auto()
+    INTEGER = enum.auto()
+    LEFT_BRACE = enum.auto()
+    RIGHT_BRACE = enum.auto()
+    LEFT_BRACKET = enum.auto()
+    RIGHT_BRACKET = enum.auto()
+    SEMICOLON = enum.auto()
+    COMMA = enum.auto()
+    EQUALS = enum.auto()
+
+
 class KeywordKind(enum.Enum):
     """
     KeywordKind enumerates the keywords which are legal in PISS IDL.
@@ -19,20 +37,6 @@ class KeywordKind(enum.Enum):
     MODULE = "module"
     UINT = "uint"
     INT = "int"
-
-
-@enum.unique
-class TokenKindTag(enum.Enum):
-    KEYWORD = enum.auto()
-    IDENTIFIER = enum.auto()
-    INTEGER = enum.auto()
-    LEFT_BRACE = enum.auto()
-    RIGHT_BRACE = enum.auto()
-    LEFT_BRACKET = enum.auto()
-    RIGHT_BRACKET = enum.auto()
-    SEMICOLON = enum.auto()
-    COMMA = enum.auto()
-    EQUALS = enum.auto()
 
 
 class TokenKindVariant:
@@ -129,14 +133,27 @@ class LexError(ValueError):
 
 
 class UnexpectedEOF(LexError):
+    """
+    Signifies that the end of input was unexpectedly reached while lexing.
+    """
+
     pass
 
 
 class UnexpectedCharacter(LexError):
+    """
+    Signifies that an unexpected character (probably illegal)
+    was encountered while lexing.
+    """
+
     pass
 
 
 class NoMatch(LexError):
+    """
+    Signifies that the scanned input did not contain an expected lexeme.
+    """
+
     pass
 
 
