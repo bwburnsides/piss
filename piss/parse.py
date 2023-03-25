@@ -5,8 +5,9 @@ Tools for parsing the PISS grammar.
 from dataclasses import dataclass
 import enum
 from piss import lex
-from typing import Literal, Callable
-from piss.lex import TokenKindTag
+import typing
+from typing import Callable
+from piss.lex import TokenKind
 
 
 @dataclass
@@ -49,40 +50,25 @@ class PrimitiveKind(enum.Enum):
     INT = enum.auto()
 
 
-@enum.unique
-class TypeTag(enum.Enum):
-    """
-    TypeTag enumerates the group of types found in PISS grammar.
-    """
-
-    PRIMITIVE = enum.auto()
-    IDENTIFIER = enum.auto()
-    ARRAY = enum.auto()
+@dataclass
+class Type(Node):
+    ...
 
 
-class TypeVariant:
-    """
-    Contains Nodes representing the group of types found in PISS grammar.
-    """
-
-    @dataclass
-    class Primitive(Node):
-        type: PrimitiveKind
-        tag: Literal[TypeTag.PRIMITIVE] = TypeTag.PRIMITIVE
-
-    @dataclass
-    class Identifier(Node):
-        type: Identifier
-        tag: Literal[TypeTag.IDENTIFIER] = TypeTag.IDENTIFIER
-
-    @dataclass
-    class Array(Node):
-        type: "Type"
-        length: Expression
-        tag: Literal[TypeTag.ARRAY] = TypeTag.ARRAY
+@dataclass
+class PrimitiveType(Type):
+    type: PrimitiveKind
 
 
-Type = TypeVariant.Primitive | TypeVariant.Identifier | TypeVariant.Array
+@dataclass
+class IdentifierType(Type):
+    type: Identifier
+
+
+@dataclass
+class ArrayType(Type):
+    type: Type
+    length: Expression
 
 
 @dataclass
@@ -91,63 +77,40 @@ class Field(Node):
     ident: Identifier
 
 
-@enum.unique
-class DefinitionTag(enum.Enum):
-    """
-    DefinitionTags enumerates the Definitions found in PISS grammar.
-    """
-
-    CONST = enum.auto()
-    STRUCT = enum.auto()
-    ENUM = enum.auto()
-    TYPEDEF = enum.auto()
-    MODULE = enum.auto()
+@dataclass
+class Definition(Node):
+    ...
 
 
-class DefinitionVariant:
-    """
-    Contains Nodes representing Definitions found in PISS grammar.
-    """
-
-    @dataclass
-    class Const(Node):
-        kind: Identifier | Type
-        ident: Identifier
-        expr: Expression
-        tag: Literal[DefinitionTag.CONST] = DefinitionTag.CONST
-
-    @dataclass
-    class Struct(Node):
-        ident: Identifier
-        fields: list[Field]
-        tag: Literal[DefinitionTag.STRUCT] = DefinitionTag.STRUCT
-
-    @dataclass
-    class Enum(Node):
-        ident: Identifier
-        variants: list[Identifier]
-        tag: Literal[DefinitionTag.ENUM] = DefinitionTag.ENUM
-
-    @dataclass
-    class Typedef(Node):
-        kind: Type
-        ident: Identifier
-        tag: Literal[DefinitionTag.TYPEDEF] = DefinitionTag.TYPEDEF
-
-    @dataclass
-    class Module(Node):
-        ident: Identifier
-        defs: list["Definition"]
-        tag: Literal[DefinitionTag.MODULE] = DefinitionTag.MODULE
+@dataclass
+class Const(Definition):
+    kind: Identifier | Type
+    ident: Identifier
+    expr: Expression
 
 
-Definition = (
-    DefinitionVariant.Const
-    | DefinitionVariant.Struct
-    | DefinitionVariant.Enum
-    | DefinitionVariant.Typedef
-    | DefinitionVariant.Module
-)
+@dataclass
+class Struct(Definition):
+    ident: Identifier
+    fields: list[Field]
+
+
+@dataclass
+class Enum(Definition):
+    ident: Identifier
+    variants: list[Identifier]
+
+
+@dataclass
+class Typedef(Definition):
+    kind: Type
+    ident: Identifier
+
+
+@dataclass
+class Module(Definition):
+    ident: Identifier
+    defs: list["Definition"]
 
 
 class ParseError(ValueError):
@@ -248,7 +211,7 @@ class Parser:
         except IndexError:
             raise ParseError
 
-    def parse_token(self, kind: TokenKindTag) -> lex.Token:
+    def parse_token(self, kind: typing.Type[TokenKind]) -> lex.Token:
         """
         Parse token of given kind from token stream.
 
@@ -268,7 +231,7 @@ class Parser:
         if peeked is None:
             raise UnexpectedEOF
 
-        if peeked.tag is not kind:
+        if not isinstance(peeked, kind):  # pyright: reportUnnecessaryIsInstance=false
             raise UnexpectedToken
 
         return self.next()
@@ -289,8 +252,8 @@ class Parser:
         """
 
         self.push()
-        token = self.parse_token(TokenKindTag.KEYWORD)
-        if token.kind.tag is not TokenKindTag.KEYWORD:
+        token = self.parse_token(lex.Keyword)
+        if not isinstance(token.kind, lex.Keyword):
             self.pop()
             raise UnexpectedToken
 
@@ -313,8 +276,8 @@ class Parser:
             UnexpectedToken - Token was not Identifier.
         """
 
-        token = self.parse_token(TokenKindTag.IDENTIFIER)
-        if token.kind.tag is not TokenKindTag.IDENTIFIER:
+        token = self.parse_token(lex.Identifier)
+        if not isinstance(token.kind, lex.Identifier):
             raise UnexpectedToken
 
         return Identifier(token.span, token.kind.name)
@@ -331,8 +294,8 @@ class Parser:
             UnexpectedToken - Token was not Integer.
         """
 
-        token = self.parse_token(TokenKindTag.INTEGER)
-        if token.kind.tag is not TokenKindTag.INTEGER:
+        token = self.parse_token(lex.Integer)
+        if not isinstance(token.kind, lex.Integer):
             raise UnexpectedToken
 
         return Integer(token.span, token.kind.value)
@@ -405,7 +368,7 @@ class Parser:
                 continue
             else:
                 self.drop()
-                parsed_type = TypeVariant.Primitive(
+                parsed_type = PrimitiveType(
                     parsed_primitive_type_keyword.span, primitive
                 )
 
@@ -415,7 +378,7 @@ class Parser:
         # since this is the last possibility for a valid Type base.
         if parsed_type is None:
             ident = self.parse_identifier()
-            parsed_type = TypeVariant.Identifier(ident.span, ident)
+            parsed_type = IdentifierType(ident.span, ident)
 
         start_span = parsed_type.span
 
@@ -427,7 +390,7 @@ class Parser:
 
             self.push()
             try:
-                self.parse_token(TokenKindTag.LEFT_BRACKET)
+                self.parse_token(lex.LeftBracket)
             except ParseError:
                 self.pop()
                 break
@@ -435,11 +398,11 @@ class Parser:
             self.drop()
 
             expr = self.parse_expression()
-            left_bracket = self.parse_token(TokenKindTag.RIGHT_BRACKET)
+            left_bracket = self.parse_token(lex.RightBracket)
 
             end_span = left_bracket.span
 
-            parsed_type = TypeVariant.Array(
+            parsed_type = ArrayType(
                 start_span + end_span,
                 parsed_type,
                 expr,
@@ -466,7 +429,7 @@ class Parser:
 
         return Field(type.span + ident.span, type, ident)
 
-    def parse_const(self) -> DefinitionVariant.Const:
+    def parse_const(self) -> Const:
         """
         Parse Const from token stream.
 
@@ -484,17 +447,15 @@ class Parser:
 
         field = self.parse_field()
 
-        self.parse_token(TokenKindTag.EQUALS)
+        self.parse_token(lex.Equals)
 
         expr = self.parse_expression()
 
-        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return DefinitionVariant.Const(
-            const.span + semicolon.span, field.kind, field.ident, expr
-        )
+        return Const(const.span + semicolon.span, field.kind, field.ident, expr)
 
-    def parse_struct(self) -> DefinitionVariant.Struct:
+    def parse_struct(self) -> Struct:
         """
         Parse Struct from token stream.
 
@@ -512,7 +473,7 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(TokenKindTag.LEFT_BRACE)
+        self.parse_token(lex.LeftBrace)
 
         # An enum can contain any number of fields in it, which means we need to loop in order to parse
         # them all. A variant is defined as an Identifier that must be followed by a Comma.
@@ -532,14 +493,14 @@ class Parser:
 
             # If we successfully parsed an Identifier then it must be followed by a Comma, do don't catch any
             # exceptions which may occur.
-            self.parse_token(TokenKindTag.COMMA)
+            self.parse_token(lex.Comma)
 
-        self.parse_token(TokenKindTag.RIGHT_BRACE)
-        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
+        self.parse_token(lex.RightBrace)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return DefinitionVariant.Struct(struct.span + semicolon.span, ident, fields)
+        return Struct(struct.span + semicolon.span, ident, fields)
 
-    def parse_enum(self) -> DefinitionVariant.Enum:
+    def parse_enum(self) -> Enum:
         """
         Parse Enum from token stream.
 
@@ -557,7 +518,7 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(TokenKindTag.LEFT_BRACE)
+        self.parse_token(lex.LeftBrace)
 
         # An enum can contain any number of variants in it, which means we need to loop in order to parse
         # them all. A variant is defined as an Identifier that must be followed by a Comma.
@@ -577,14 +538,14 @@ class Parser:
 
             # If we successfully parsed an Identifier then it must be followed by a Comma, so don't catch any
             # exceptions which may occur.
-            self.parse_token(TokenKindTag.COMMA)
+            self.parse_token(lex.Comma)
 
-        self.parse_token(TokenKindTag.RIGHT_BRACE)
-        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
+        self.parse_token(lex.RightBrace)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return DefinitionVariant.Enum(enum.span + semicolon.span, ident, variants)
+        return Enum(enum.span + semicolon.span, ident, variants)
 
-    def parse_typedef(self) -> DefinitionVariant.Typedef:
+    def parse_typedef(self) -> Typedef:
         """
         Parse Typedef from token stream.
 
@@ -602,11 +563,9 @@ class Parser:
 
         field = self.parse_field()
 
-        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return DefinitionVariant.Typedef(
-            typedef.span + semicolon.span, field.kind, field.ident
-        )
+        return Typedef(typedef.span + semicolon.span, field.kind, field.ident)
 
     def parse_definition(self) -> Definition:
         """
@@ -654,7 +613,7 @@ class Parser:
 
         raise UnexpectedToken
 
-    def parse_module(self) -> DefinitionVariant.Module:
+    def parse_module(self) -> Module:
         """
         Parse Definition from token stream.
 
@@ -672,7 +631,7 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(TokenKindTag.LEFT_BRACE)
+        self.parse_token(lex.LeftBrace)
 
         definitions: list[Definition] = []
 
@@ -690,9 +649,7 @@ class Parser:
                 self.drop()
                 definitions.append(definition)
 
-        self.parse_token(TokenKindTag.RIGHT_BRACE)
-        semicolon = self.parse_token(TokenKindTag.SEMICOLON)
+        self.parse_token(lex.RightBrace)
+        semicolon = self.parse_token(lex.SemiColon)
 
-        return DefinitionVariant.Module(
-            module.span + semicolon.span, ident, definitions
-        )
+        return Module(module.span + semicolon.span, ident, definitions)

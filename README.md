@@ -34,7 +34,7 @@ PrimitiveType = Keyword::INT, Keyword::UINT
 ```
 Type = PrimitiveType
      | Identifier
-     | Type LeftBracket Expression RightBracket 
+     | Type LeftBracket Expression RightBracket
 ```
 
 ### Field

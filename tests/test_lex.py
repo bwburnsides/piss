@@ -4,7 +4,6 @@ Tests for functions in lex.py.
 
 import pytest
 from piss import lex
-from piss.lex import TokenKindVariant
 from textwrap import dedent
 from typing import Type
 
@@ -12,15 +11,15 @@ from typing import Type
 @pytest.mark.parametrize(
     ("input", "expected_token", "expected_chars_read"),
     [
-        ("F", TokenKindVariant.Identifier("F"), 1),
-        ("Foo", TokenKindVariant.Identifier("Foo"), 3),
-        ("Foo_bar", TokenKindVariant.Identifier("Foo_bar"), 7),
-        ("struct", TokenKindVariant.Keyword(lex.KeywordKind.STRUCT), 6),
+        ("F", lex.Identifier("F"), 1),
+        ("Foo", lex.Identifier("Foo"), 3),
+        ("Foo_bar", lex.Identifier("Foo_bar"), 7),
+        ("struct", lex.Keyword(lex.KeywordKind.STRUCT), 6),
     ],
 )
 def test_tokenize_identifier_or_keyword(
     input: str,
-    expected_token: TokenKindVariant.Identifier | TokenKindVariant.Keyword,
+    expected_token: lex.Identifier | lex.Keyword,
     expected_chars_read: int,
 ) -> None:
     ident_or_keyword, chars_read = lex.tokenize_identifier_or_keyword(input)
@@ -47,9 +46,9 @@ def test_fail_tokenize_identifier_or_keyword(
 @pytest.mark.parametrize(
     ("input", "expected_token", "expected_chars_read"),
     [
-        ("1", TokenKindVariant.Integer(1), 1),
-        ("123456789", TokenKindVariant.Integer(123456789), 9),
-        ("123456789asdfghjkl", TokenKindVariant.Integer(123456789), 9),
+        ("1", lex.Integer(1), 1),
+        ("123456789", lex.Integer(123456789), 9),
+        ("123456789asdfghjkl", lex.Integer(123456789), 9),  # cspell: disable-line
     ],
 )
 def test_tokenize_integer(
@@ -61,7 +60,7 @@ def test_tokenize_integer(
     assert chars_read == expected_chars_read
 
 
-@pytest.mark.parametrize(("input"), ["asdfghjkl"])
+@pytest.mark.parametrize(("input"), ["asdfghjkl"])  # cspell: disable-line
 def test_fail_tokenize_integer(input: str) -> None:
     with pytest.raises(lex.LexError):
         lex.tokenize_integer(input)
@@ -71,7 +70,7 @@ def test_fail_tokenize_integer(input: str) -> None:
     ("input", "expected_chars_read"),
     [
         (" \t\n\r123", 4),
-        ("Hellow, World!", 0),
+        ("Hello, World!", 0),
     ],
 )
 def test_whitespace(input: str, expected_chars_read: int) -> None:
@@ -95,12 +94,12 @@ def test_comments(input: str, expected_chars_read: int) -> None:
 @pytest.mark.parametrize(
     ("input", "expected_token", "expected_length"),
     [
-        ("1234", TokenKindVariant.Integer(1234), 4),
-        ("=", TokenKindVariant.Equals(), 1),
-        ("{", TokenKindVariant.LeftBrace(), 1),
-        ("}", TokenKindVariant.RightBrace(), 1),
-        (";", TokenKindVariant.SemiColon(), 1),
-        (",", TokenKindVariant.Comma(), 1),
+        ("1234", lex.Integer(1234), 4),
+        ("=", lex.Equals(), 1),
+        ("{", lex.LeftBrace(), 1),
+        ("}", lex.RightBrace(), 1),
+        (";", lex.SemiColon(), 1),
+        (",", lex.Comma(), 1),
     ],
 )
 def test_token(input: str, expected_token: lex.TokenKind, expected_length: int) -> None:
@@ -128,20 +127,20 @@ def test_tokenize() -> None:
     )
 
     expected_tokens_kinds = [
-        TokenKindVariant.Keyword(lex.KeywordKind.STRUCT),
-        TokenKindVariant.Identifier("PersonType"),
-        TokenKindVariant.LeftBrace(),
-        TokenKindVariant.Identifier("NameType"),
-        TokenKindVariant.Identifier("name"),
-        TokenKindVariant.Comma(),
-        TokenKindVariant.Identifier("AgeType"),
-        TokenKindVariant.Identifier("age"),
-        TokenKindVariant.Comma(),
-        TokenKindVariant.Identifier("HeightType"),
-        TokenKindVariant.Identifier("height"),
-        TokenKindVariant.Comma(),
-        TokenKindVariant.RightBrace(),
-        TokenKindVariant.SemiColon(),
+        lex.Keyword(lex.KeywordKind.STRUCT),
+        lex.Identifier("PersonType"),
+        lex.LeftBrace(),
+        lex.Identifier("NameType"),
+        lex.Identifier("name"),
+        lex.Comma(),
+        lex.Identifier("AgeType"),
+        lex.Identifier("age"),
+        lex.Comma(),
+        lex.Identifier("HeightType"),
+        lex.Identifier("height"),
+        lex.Comma(),
+        lex.RightBrace(),
+        lex.SemiColon(),
     ]
 
     tokens = lex.tokenize(struct_example)

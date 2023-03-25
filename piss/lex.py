@@ -4,7 +4,7 @@ Tools for tokenizing the PISS lexicon.
 
 from dataclasses import dataclass
 import enum
-from typing import Callable, Literal
+from typing import Callable
 
 
 class KeywordKind(enum.Enum):
@@ -21,81 +21,59 @@ class KeywordKind(enum.Enum):
     INT = "int"
 
 
-@enum.unique
-class TokenKindTag(enum.Enum):
-    """
-    TokenKindTag enumerates the types of Tokens which are legal in PISS IDL.
-    """
-
-    KEYWORD = enum.auto()
-    IDENTIFIER = enum.auto()
-    INTEGER = enum.auto()
-    LEFT_BRACE = enum.auto()
-    RIGHT_BRACE = enum.auto()
-    LEFT_BRACKET = enum.auto()
-    RIGHT_BRACKET = enum.auto()
-    SEMICOLON = enum.auto()
-    COMMA = enum.auto()
-    EQUALS = enum.auto()
+@dataclass
+class TokenKind:
+    ...
 
 
-class TokenKindVariant:
-    @dataclass
-    class Keyword:
-        keyword: KeywordKind
-        tag: Literal[TokenKindTag.KEYWORD] = TokenKindTag.KEYWORD
-
-    @dataclass
-    class Identifier:
-        name: str
-        tag: Literal[TokenKindTag.IDENTIFIER] = TokenKindTag.IDENTIFIER
-
-    @dataclass
-    class Integer:
-        value: int
-        tag: Literal[TokenKindTag.INTEGER] = TokenKindTag.INTEGER
-
-    @dataclass
-    class LeftBrace:
-        tag: Literal[TokenKindTag.LEFT_BRACE] = TokenKindTag.LEFT_BRACE
-
-    @dataclass
-    class RightBrace:
-        tag: Literal[TokenKindTag.RIGHT_BRACE] = TokenKindTag.RIGHT_BRACE
-
-    @dataclass
-    class LeftBracket:
-        tag: Literal[TokenKindTag.LEFT_BRACKET] = TokenKindTag.LEFT_BRACKET
-
-    @dataclass
-    class RightBracket:
-        tag: Literal[TokenKindTag.RIGHT_BRACKET] = TokenKindTag.RIGHT_BRACKET
-
-    @dataclass
-    class SemiColon:
-        tag: Literal[TokenKindTag.SEMICOLON] = TokenKindTag.SEMICOLON
-
-    @dataclass
-    class Comma:
-        tag: Literal[TokenKindTag.COMMA] = TokenKindTag.COMMA
-
-    @dataclass
-    class Equals:
-        tag: Literal[TokenKindTag.EQUALS] = TokenKindTag.EQUALS
+@dataclass
+class Keyword(TokenKind):
+    keyword: KeywordKind
 
 
-TokenKind = (
-    TokenKindVariant.Keyword
-    | TokenKindVariant.Identifier
-    | TokenKindVariant.Integer
-    | TokenKindVariant.LeftBrace
-    | TokenKindVariant.RightBrace
-    | TokenKindVariant.LeftBracket
-    | TokenKindVariant.RightBracket
-    | TokenKindVariant.SemiColon
-    | TokenKindVariant.Comma
-    | TokenKindVariant.Equals
-)
+@dataclass
+class Identifier(TokenKind):
+    name: str
+
+
+@dataclass
+class Integer(TokenKind):
+    value: int
+
+
+@dataclass
+class LeftBrace(TokenKind):
+    ...
+
+
+@dataclass
+class RightBrace(TokenKind):
+    ...
+
+
+@dataclass
+class LeftBracket(TokenKind):
+    ...
+
+
+@dataclass
+class RightBracket(TokenKind):
+    ...
+
+
+@dataclass
+class SemiColon(TokenKind):
+    ...
+
+
+@dataclass
+class Comma(TokenKind):
+    ...
+
+
+@dataclass
+class Equals(TokenKind):
+    ...
 
 
 @dataclass
@@ -116,10 +94,6 @@ class Span:
 
 @dataclass
 class Token:
-    """
-    Represents token as its type and location in source.
-    """
-
     kind: TokenKind
     span: Span
 
@@ -210,7 +184,7 @@ def skip_until(data: str, pattern: str) -> str:
 
 def tokenize_identifier_or_keyword(
     data: str,
-) -> tuple[TokenKindVariant.Identifier | TokenKindVariant.Keyword, int]:
+) -> tuple[Identifier | Keyword, int]:
     """
     Attempt to consume Identifier or Keyword token type from input.
 
@@ -239,12 +213,12 @@ def tokenize_identifier_or_keyword(
     name, chars_read = take_while(data, lambda char: char == "_" or char.isalnum())
 
     if name in [variant.value for variant in KeywordKind]:
-        return TokenKindVariant.Keyword(KeywordKind(name)), chars_read
+        return Keyword(KeywordKind(name)), chars_read
 
-    return TokenKindVariant.Identifier(name), chars_read
+    return Identifier(name), chars_read
 
 
-def tokenize_integer(data: str) -> tuple[TokenKindVariant.Integer, int]:
+def tokenize_integer(data: str) -> tuple[Integer, int]:
     """
     Attempt to consume an Integer token type from input.
 
@@ -259,7 +233,7 @@ def tokenize_integer(data: str) -> tuple[TokenKindVariant.Integer, int]:
     """
 
     integer, chars_read = take_while(data, lambda char: char.isdigit())
-    return TokenKindVariant.Integer(int(integer)), chars_read
+    return Integer(int(integer)), chars_read
 
 
 def skip_whitespace(data: str) -> int:
@@ -346,11 +320,11 @@ def token(data: str) -> tuple[TokenKind, int] | None:
         return None
 
     primitive_tokens: dict[str, tuple[TokenKind, int]] = {
-        "{": (TokenKindVariant.LeftBrace(), 1),
-        "}": (TokenKindVariant.RightBrace(), 1),
-        ";": (TokenKindVariant.SemiColon(), 1),
-        ",": (TokenKindVariant.Comma(), 1),
-        "=": (TokenKindVariant.Equals(), 1),
+        "{": (LeftBrace(), 1),
+        "}": (RightBrace(), 1),
+        ";": (SemiColon(), 1),
+        ",": (Comma(), 1),
+        "=": (Equals(), 1),
     }
 
     token_kind: TokenKind
