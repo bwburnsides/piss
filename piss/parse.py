@@ -475,8 +475,8 @@ class Parser:
 
         self.parse_token(lex.LeftBrace)
 
-        # An enum can contain any number of fields in it, which means we need to loop in order to parse
-        # them all. A variant is defined as an Identifier that must be followed by a Comma.
+        # A struct can contain any number of fields in it, which means we need to loop in order to parse
+        # them all. A field is defined as a Field that must be followed by a Comma.
         fields: list[Field] = []
         while True:
             # Attempt to parse a Field. If there is an UnexpectedToken, then there is not a field at the
