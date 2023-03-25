@@ -1,5 +1,5 @@
 """
-Tools for parsing the PISS grammer.
+Tools for parsing the PISS grammar.
 """
 
 from dataclasses import dataclass
@@ -259,7 +259,7 @@ class Parser:
             Token - Parsed token.
 
         Raises:
-            UnexepctedEOF - Stream was exhausted.
+            UnexpectedEOF - Stream was exhausted.
             UnexpectedToken - Token was not expected type.
         """
 
@@ -351,7 +351,7 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Expression.
         """
 
-        # Attempt to parse an Identitifer. If there is an UnexpectedToken, then we could
+        # Attempt to parse an Identifier. If there is an UnexpectedToken, then we could
         # not successfully parse one, and now we'll try to parse an Integer.
         self.push()
         try:
@@ -421,9 +421,9 @@ class Parser:
 
         # Now we check if this type is an array type.
         while True:
-            # Loop with the following pattern: look for left bracket, then look for experssion, then look for right bracket.
+            # Loop with the following pattern: look for left bracket, then look for expression, then look for right bracket.
             # If no left bracket, we're done (break and return)
-            # If anything after left bracket is missing, then unexpectedtoken / unexepectedeof
+            # If anything after left bracket is missing, then UnexpectedToken / UnexpectedEOF
 
             self.push()
             try:
@@ -588,7 +588,7 @@ class Parser:
         """
         Parse Typedef from token stream.
 
-        TypdefDefinition = Keyword::TYPEDEF Field SemiColon
+        TypedefDefinition = Keyword::TYPEDEF Field SemiColon
 
         Returns:
             Typedef - Parsed Typedef.
@@ -634,11 +634,11 @@ class Parser:
 
         # Try to parse each type of definition. If it succeeds, then return that definition.
         # However, a ParseError might be raised. These include UnexpectedEOF and UnexpectedToken.
-        # In the case of an UnexecptedEOF, that means that the token stream was unexpectedly
+        # In the case of an UnexpectedEOF, that means that the token stream was unexpectedly
         # exhausted. This is a syntactic error, it means that tokens were missing. Maybe a missing
         # semicolon, so we raise that exception to our caller. However, if for example an
         # UnexpectedToken exception occurs, this likely means that the token stream doesn't
-        # currenly have the target definition at the front. In that case, we ignore the
+        # currently have the target definition at the front. In that case, we ignore the
         # exception and continue onwards and attempt to parse the next type of definition.
 
         for parser in definition_parsers:

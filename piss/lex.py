@@ -379,7 +379,7 @@ class Tokenizer:
         source: str - The input to be tokenized.
 
     Attributes:
-        current_index: int - Index into source, where lexing is occuring.
+        current_index: int - Index into source, where lexing is occurring.
         remaining_text: str - Unconsumed portion of source.
     """
 

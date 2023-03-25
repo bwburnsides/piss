@@ -22,7 +22,7 @@ Keyword = "const"
 
 ### Expression
 ```
-Expression = Identiifer | Integer
+Expression = Identifier | Integer
 ```
 
 ### PrimitiveType
