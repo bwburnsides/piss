@@ -19,6 +19,12 @@ class Node:
     span: lex.Span
 
 
+GenericNodeT = typing.TypeVar("GenericNodeT", bound=Node)
+GenericNodeU = typing.TypeVar("GenericNodeU", bound=Node)
+
+T = typing.TypeVar("T")
+
+
 @dataclass
 class Keyword(Node):
     kind: lex.KeywordKind
@@ -211,6 +217,76 @@ class Parser:
         except IndexError:
             raise ParseError
 
+    def many(self, parser: Callable[[], T | None]) -> list[T]:
+        nodes: list[T] = []
+
+        while True:
+            maybe_node = parser()
+
+            if maybe_node is None:
+                break
+
+            nodes.append(maybe_node)
+
+        return nodes
+
+    def between(
+        self,
+        before: typing.Type[TokenKind],
+        after: typing.Type[TokenKind],
+        parser: Callable[[], T],
+    ) -> T:
+        self.parse_token(before)
+        node = parser()
+        self.parse_token(after)
+
+        return node
+
+    def and_then(
+        self,
+        parser: Callable[[], GenericNodeT | None],
+        terminator: typing.Type[TokenKind],
+    ) -> GenericNodeT | None:
+        node = parser()
+
+        if node is not None:
+            self.parse_token(terminator)
+
+        return node
+
+    def either_or(
+        self,
+        first_choice: Callable[[], GenericNodeT],
+        second_choice: Callable[[], GenericNodeU],
+    ) -> GenericNodeT | GenericNodeU:
+        parsed_node: GenericNodeT | GenericNodeU | None = None
+
+        try:
+            parsed_node = first_choice()
+        except UnexpectedToken:
+            pass
+
+        if parsed_node is None:
+            parsed_node = second_choice()
+
+        return parsed_node
+
+    def try_parse(self, parser: Callable[[], T]) -> None | T:
+        self.push()
+        try:
+            return parser()
+        except UnexpectedEOF:
+            self.pop()
+            raise UnexpectedEOF
+        except UnexpectedToken:
+            self.drop()
+            return None
+
+    def parse_if(
+        self, predicate: typing.Callable[[], bool], parser: Callable[[], T]
+    ) -> None | T:
+        return parser() if predicate() else None
+
     def parse_token(self, kind: typing.Type[TokenKind]) -> lex.Token:
         """
         Parse token of given kind from token stream.
@@ -332,13 +408,34 @@ class Parser:
         integer = self.parse_integer()
         return Expression(integer.span, integer)
 
+    def parse_primitive_type(self) -> PrimitiveType:
+        primitives = [
+            (lex.KeywordKind.UINT, PrimitiveKind.UINT),
+            (lex.KeywordKind.INT, PrimitiveKind.INT),
+        ]
+
+        # Search for a Keyword token corresponding to the PrimitiveType
+        # KeywordKind. If there is an UnexpectedToken, then we'll try to parse
+        # the next PrimitiveType KeywordKind. If there isn't, then we've parsed
+        # the base of a Type and can progress to checking for array types.
+        for keyword, primitive in primitives:
+            parsed_keyword_or_none = self.try_parse(lambda: self.parse_keyword(keyword))
+
+            if parsed_keyword_or_none is not None:
+                return PrimitiveType(parsed_keyword_or_none.span, primitive)
+
+        raise UnexpectedToken
+
+    def parse_identifier_type(self) -> IdentifierType:
+        ident = self.parse_identifier()
+        return IdentifierType(ident.span, ident)
+
     def parse_type(self) -> Type:
         """
         Parse Type from token stream.
 
-        Type = PrimitiveType
-              | Identifier
-              | Type LeftBracket Expression RightBracket
+        Type = PrimitiveType (LeftBracket Expression RightBracket)*
+             | Identifier (LeftBracket Expression RightBracket)*
 
         Returns:
             Type - Parsed Type.
@@ -348,62 +445,32 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Type.
         """
 
-        primitives = [
-            (lex.KeywordKind.UINT, PrimitiveKind.UINT),
-            (lex.KeywordKind.INT, PrimitiveKind.INT),
-        ]
-
-        parsed_type: Type | None = None
-
-        # Search for a Keyword token corresponding to the PrimitiveType
-        # KeywordKind. If there is an UnexpectedToken, then we'll try to parse
-        # the next PrimitiveType KeywordKind. If there isn't, then we've parsed
-        # the base of a Type and can progress to checking for array types.
-        for keyword, primitive in primitives:
-            self.push()
-            try:
-                parsed_primitive_type_keyword = self.parse_keyword(keyword)
-            except UnexpectedToken:
-                self.pop()
-                continue
-            else:
-                self.drop()
-                parsed_type = PrimitiveType(
-                    parsed_primitive_type_keyword.span, primitive
-                )
-
-        # If no PrimitiveType could be parsed, then the Type base must be an Identifier.
-        # This Identifier corresponds to the name of a user-defined type, maybe via
-        # a typedef, struct, or enum definition. Don't try to catch an exceptions
-        # since this is the last possibility for a valid Type base.
-        if parsed_type is None:
-            ident = self.parse_identifier()
-            parsed_type = IdentifierType(ident.span, ident)
-
-        start_span = parsed_type.span
-
-        # Now we check if this type is an array type.
-        while True:
-            # Loop with the following pattern: look for left bracket, then look for expression, then look for right bracket.
-            # If no left bracket, we're done (break and return)
-            # If anything after left bracket is missing, then UnexpectedToken / UnexpectedEOF
-
-            self.push()
-            try:
-                self.parse_token(lex.LeftBracket)
-            except ParseError:
-                self.pop()
-                break
-
-            self.drop()
-
+        def parse_bounds() -> tuple[Expression, lex.Span]:
+            self.parse_token(lex.LeftBracket)
             expr = self.parse_expression()
-            left_bracket = self.parse_token(lex.RightBracket)
+            right_bracket = self.parse_token(lex.RightBracket)
 
-            end_span = left_bracket.span
+            return expr, right_bracket.span
+
+        parsed_type: Type = self.either_or(
+            self.parse_primitive_type,
+            self.parse_identifier_type,
+        )
+
+        try:
+            exprs_and_spans = self.many(
+                lambda: self.parse_if(
+                    lambda: isinstance(self.peek(), lex.LeftBracket), parse_bounds
+                )
+            )
+        except UnexpectedEOF:
+            exprs_and_spans = []
+
+        for expr, span in exprs_and_spans:
+            start_span = parsed_type.span
 
             parsed_type = ArrayType(
-                start_span + end_span,
+                start_span + span,
                 parsed_type,
                 expr,
             )
@@ -473,29 +540,16 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(lex.LeftBrace)
+        fields: list[Field] = self.between(
+            lex.LeftBrace,
+            lex.RightBrace,
+            lambda: self.many(
+                lambda: self.and_then(
+                    lambda: self.try_parse(self.parse_field), lex.Comma
+                )
+            ),
+        )
 
-        # A struct can contain any number of fields in it, which means we need to loop in order to parse
-        # them all. A field is defined as a Field that must be followed by a Comma.
-        fields: list[Field] = []
-        while True:
-            # Attempt to parse a Field. If there is an UnexpectedToken, then there is not a field at the
-            # front of the Token stream and we are done parsing fields and can break.
-            try:
-                self.push()
-                field = self.parse_field()
-            except UnexpectedToken:
-                self.pop()
-                break
-            else:
-                self.drop()
-                fields.append(field)
-
-            # If we successfully parsed an Identifier then it must be followed by a Comma, do don't catch any
-            # exceptions which may occur.
-            self.parse_token(lex.Comma)
-
-        self.parse_token(lex.RightBrace)
         semicolon = self.parse_token(lex.SemiColon)
 
         return Struct(struct.span + semicolon.span, ident, fields)
@@ -518,29 +572,16 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(lex.LeftBrace)
+        variants = self.between(
+            lex.LeftBrace,
+            lex.RightBrace,
+            lambda: self.many(
+                lambda: self.and_then(
+                    lambda: self.try_parse(self.parse_identifier), lex.Comma
+                )
+            ),
+        )
 
-        # An enum can contain any number of variants in it, which means we need to loop in order to parse
-        # them all. A variant is defined as an Identifier that must be followed by a Comma.
-        variants: list[Identifier] = []
-        while True:
-            # Attempt to parse an Identifier, which names the variant. If there is an UnexpectedToken, then
-            # there is not a variant at the front of the Token stream and we are done parsing variants and can break.
-            self.push()
-            try:
-                variant = self.parse_identifier()
-            except UnexpectedToken:
-                self.pop()
-                break
-            else:
-                self.drop()
-                variants.append(variant)
-
-            # If we successfully parsed an Identifier then it must be followed by a Comma, so don't catch any
-            # exceptions which may occur.
-            self.parse_token(lex.Comma)
-
-        self.parse_token(lex.RightBrace)
         semicolon = self.parse_token(lex.SemiColon)
 
         return Enum(enum.span + semicolon.span, ident, variants)
@@ -601,15 +642,10 @@ class Parser:
         # exception and continue onwards and attempt to parse the next type of definition.
 
         for parser in definition_parsers:
-            self.push()
-            try:
-                return parser()
-            except UnexpectedEOF:
-                self.pop()
-                raise UnexpectedEOF
-            except UnexpectedToken:
-                self.drop()
-                continue
+            option = self.try_parse(parser)
+
+            if option is not None:
+                return option
 
         raise UnexpectedToken
 
@@ -631,25 +667,12 @@ class Parser:
 
         ident = self.parse_identifier()
 
-        self.parse_token(lex.LeftBrace)
+        definitions = self.between(
+            before=lex.LeftBrace,
+            after=lex.RightBrace,
+            parser=lambda: self.many(lambda: self.try_parse(self.parse_definition)),
+        )
 
-        definitions: list[Definition] = []
-
-        while True:
-            try:
-                self.push()
-                definition = self.parse_definition()
-            except UnexpectedToken:
-                self.pop()
-                break
-            except ParseError:
-                self.pop()
-                raise ParseError
-            else:
-                self.drop()
-                definitions.append(definition)
-
-        self.parse_token(lex.RightBrace)
         semicolon = self.parse_token(lex.SemiColon)
 
         return Module(module.span + semicolon.span, ident, definitions)

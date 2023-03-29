@@ -325,6 +325,8 @@ def token(data: str) -> tuple[TokenKind, int] | None:
         ";": (SemiColon(), 1),
         ",": (Comma(), 1),
         "=": (Equals(), 1),
+        "[": (LeftBracket(), 1),
+        "]": (RightBracket(), 1),
     }
 
     token_kind: TokenKind
