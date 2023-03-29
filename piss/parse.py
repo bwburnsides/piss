@@ -245,14 +245,16 @@ class Parser:
 
     # TODO: doesn't need to be in class
     def parse_if(
-        self, predicate: Callable[[], bool], parser: Callable[[], T]
+        self,
+        parser: Callable[[], T],
+        predicate: Callable[[], bool],
     ) -> T | None:
         """
         Parse T if predicate is True.
 
         Parameters:
-            predicate: () -> bool - Condition which must be True in order to parse T.
             parser: () -> T - Parser for T.
+            predicate: () -> bool - Condition which must be True in order to parse T.
 
         Returns:
             None - Predicate was not True and T was not parsed.
@@ -261,6 +263,7 @@ class Parser:
 
         return parser() if predicate() else None
 
+    # TODO: refactor TokenKind relationships to remove cheesy typing.Type needs.
     def and_then(
         self,
         parser: Callable[[], GenericNodeT],
@@ -335,7 +338,7 @@ class Parser:
             Any - Uncaught Exception raised by either parser. UnexpectedToken thrown by higher preference NodeT parser is handled.
         """
 
-        parsed_node_or_none: GenericNodeT | GenericNodeU | None = None
+        parsed_node_or_none: GenericNodeT | GenericNodeU | None
 
         parsed_node_or_none = self.try_parse(first_choice)
 
@@ -350,7 +353,7 @@ class Parser:
         before: typing.Type[TokenKind],
         after: typing.Type[TokenKind],
         parser: Callable[[], T],
-    ) -> T:
+    ) -> tuple[lex.Token, lex.Token, T]:
         """
         Parse T with preceding and succeeding tokens of specified kinds from token stream.
 
@@ -366,7 +369,7 @@ class Parser:
             parser: () -> T - Parser which defines valid Ts.
 
         Returns:
-            T - Parsed T found between before and after token kinds.
+            lex.Token, lex.Token, T - Consumed before and after tokens and parsed T, respectively.
 
         Raises:
             UnexpectedToken - Stream could not parse the before token, T, or after token.
@@ -374,11 +377,11 @@ class Parser:
             Any - Uncaught Exception raised by parser.
         """
 
-        self.parse_token(before)
+        before_token = self.parse_token(before)
         node = parser()
-        self.parse_token(after)
+        after_token = self.parse_token(after)
 
-        return node
+        return before_token, after_token, node
 
     # TODO: This doesn't need to be in this class.
     # Create combinator module that contains generic combinators. (This and others)
@@ -407,6 +410,8 @@ class Parser:
 
         items: list[T] = []
 
+        # TODO: more functional way to represent this for sure. maybe something like
+        # functools.reduce.
         while True:
             item_or_none = parser()
 
@@ -483,6 +488,7 @@ class Parser:
         """
 
         token = self.parse_token(lex.Identifier)
+        # TODO: refactor TokenKind hierarchy in order to remove noisy isinstance checks.
         if not isinstance(token.kind, lex.Identifier):
             raise UnexpectedToken
 
@@ -529,6 +535,9 @@ class Parser:
             (lex.KeywordKind.INT, PrimitiveKind.INT),
         ]
 
+        # TODO: the pattern of iterating over a set of parsers is repeated twice.
+        # maybe introduce a new combinator, "parse_from"
+
         # Search for a Keyword token corresponding to the PrimitiveType
         # KeywordKind. If there is an UnexpectedToken, then we'll try to parse
         # the next PrimitiveType KeywordKind. If there isn't, then we've parsed
@@ -569,18 +578,21 @@ class Parser:
         )
 
         def parse_bounds() -> tuple[Expression, lex.Span]:
-            self.parse_token(lex.LeftBracket)
-            expr = self.parse_expression()
-            right_bracket = self.parse_token(lex.RightBracket)
+            _, right_bracket, expr = self.between(
+                lex.LeftBracket, lex.RightBracket, self.parse_expression
+            )
 
             return expr, right_bracket.span
 
-        exprs_and_spans = self.many(
-            lambda: self.parse_if(
-                lambda: isinstance(self.peek(), lex.LeftBracket), parse_bounds
+        def maybe_parse_bounds() -> tuple[Expression, lex.Span] | None:
+            return self.parse_if(
+                parse_bounds, lambda: isinstance(self.peek(), lex.LeftBracket)
             )
-        )
 
+        exprs_and_spans = self.many(maybe_parse_bounds)
+
+        # TODO: there is a functional way to express this. something similar
+        # to functools.reduce maybe.
         for expr, span in exprs_and_spans:
             start_span = parsed_type.span
 
@@ -658,7 +670,7 @@ class Parser:
         def field_then_comma() -> Field | None:
             return self.and_then(self.parse_field, lex.Comma)
 
-        fields = self.between(
+        _, _, fields = self.between(
             lex.LeftBrace,
             lex.RightBrace,
             lambda: self.many(field_then_comma),
@@ -689,7 +701,7 @@ class Parser:
         def ident_then_comma() -> Identifier | None:
             return self.and_then(self.parse_identifier, lex.Comma)
 
-        variants = self.between(
+        _, _, variants = self.between(
             lex.LeftBrace,
             lex.RightBrace,
             lambda: self.many(ident_then_comma),
@@ -783,7 +795,7 @@ class Parser:
         def try_parse_definition() -> Definition | None:
             return self.try_parse(self.parse_definition)
 
-        definitions = self.between(
+        _, _, definitions = self.between(
             before=lex.LeftBrace,
             after=lex.RightBrace,
             parser=lambda: self.many(try_parse_definition),
