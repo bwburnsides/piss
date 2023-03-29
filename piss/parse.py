@@ -157,7 +157,7 @@ class Parser:
         self.index = 0
         self.state: list[int] = []
 
-    def peek(self) -> lex.TokenKind | None:
+    def peek(self) -> TokenKind | None:
         """
         Return type of current token without advancing stream pointer.
 
