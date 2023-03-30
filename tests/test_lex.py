@@ -14,7 +14,7 @@ from typing import Type
         ("F", lex.Identifier("F"), 1),
         ("Foo", lex.Identifier("Foo"), 3),
         ("Foo_bar", lex.Identifier("Foo_bar"), 7),
-        ("struct", lex.Keyword(lex.KeywordKind.STRUCT), 6),
+        ("struct", lex.Keyword(lex.KeywordKind.Struct), 6),
     ],
 )
 def test_tokenize_identifier_or_keyword(
@@ -127,7 +127,7 @@ def test_tokenize() -> None:
     )
 
     expected_tokens_kinds = [
-        lex.Keyword(lex.KeywordKind.STRUCT),
+        lex.Keyword(lex.KeywordKind.Struct),
         lex.Identifier("PersonType"),
         lex.LeftBrace(),
         lex.Identifier("NameType"),

@@ -10,6 +10,66 @@ from typing import Callable
 from piss.lex import TokenKind
 
 
+T = typing.TypeVar("T")
+
+
+def parse_if(
+    parser: Callable[[], T],
+    predicate: Callable[[], bool],
+) -> T | None:
+    """
+    Parse T if predicate is True.
+
+    Parameters:
+        parser: () -> T - Parser for T.
+        predicate: () -> bool - Condition which must be True in order to parse T.
+
+    Returns:
+        None - Predicate was not True and T was not parsed.
+        T - Parsed T.
+    """
+
+    return parser() if predicate() else None
+
+
+def many(parser: Callable[[], T | None]) -> list[T]:
+    """
+    Parse and collect Ts.
+
+    Example:
+        Consider a parse source that has the following types of items to parse at
+        its front: T T T U V T T ...
+
+        Provided parser should return None when U is encountered. Higher order parser will
+        return [T, T, T].
+
+    Parameters:
+        parser: () -> T | None - Optional T parser. Higher order parsing concludes
+        when parser returns None.
+
+    Returns:
+        list[T] - Parsed Ts produced via parser.
+
+    Raises:
+        RecursionError - Parser did not return None, causing Stack Overflow.
+        Any - Uncaught Exception raised by parser.
+    """
+
+    items: list[T] = []
+
+    # TODO: more functional way to represent this for sure. maybe something like
+    # functools.reduce.
+    while True:
+        item_or_none = parser()
+
+        if item_or_none is None:
+            break
+
+        items.append(item_or_none)
+
+    return items
+
+
 @dataclass
 class Node:
     """
@@ -17,12 +77,6 @@ class Node:
     """
 
     span: lex.Span
-
-
-GenericNodeT = typing.TypeVar("GenericNodeT", bound=Node)
-GenericNodeU = typing.TypeVar("GenericNodeU", bound=Node)
-
-T = typing.TypeVar("T")
 
 
 @dataclass
@@ -52,8 +106,8 @@ class PrimitiveKind(enum.Enum):
     These are represented by Keyword tokens.
     """
 
-    UINT = enum.auto()
-    INT = enum.auto()
+    Uint = enum.auto()
+    Int = enum.auto()
 
 
 @dataclass
@@ -117,6 +171,10 @@ class Typedef(Definition):
 class Module(Definition):
     ident: Identifier
     defs: list["Definition"]
+
+
+GenericNodeT = typing.TypeVar("GenericNodeT", bound=Node)
+GenericNodeU = typing.TypeVar("GenericNodeU", bound=Node)
 
 
 class ParseError(ValueError):
@@ -243,26 +301,6 @@ class Parser:
             self.drop()
             return None
 
-    # TODO: doesn't need to be in class
-    def parse_if(
-        self,
-        parser: Callable[[], T],
-        predicate: Callable[[], bool],
-    ) -> T | None:
-        """
-        Parse T if predicate is True.
-
-        Parameters:
-            parser: () -> T - Parser for T.
-            predicate: () -> bool - Condition which must be True in order to parse T.
-
-        Returns:
-            None - Predicate was not True and T was not parsed.
-            T - Parsed T.
-        """
-
-        return parser() if predicate() else None
-
     # TODO: refactor TokenKind relationships to remove cheesy typing.Type needs.
     def and_then(
         self,
@@ -304,8 +342,6 @@ class Parser:
 
         return node_or_none
 
-    # TODO: might not need to live in class. Move to combinators module?
-    # TODO: Use T and U rather than GenericNode?
     def either_or(
         self,
         first_choice: Callable[[], GenericNodeT],
@@ -338,16 +374,12 @@ class Parser:
             Any - Uncaught Exception raised by either parser. UnexpectedToken thrown by higher preference NodeT parser is handled.
         """
 
-        parsed_node_or_none: GenericNodeT | GenericNodeU | None
+        choices: list[Callable[[], GenericNodeT | GenericNodeU]] = [
+            first_choice,
+            second_choice,
+        ]
+        return self.choice(choices)
 
-        parsed_node_or_none = self.try_parse(first_choice)
-
-        if parsed_node_or_none is None:
-            parsed_node_or_none = second_choice()
-
-        return parsed_node_or_none
-
-    # TODO: can type parameter be restricted to GenericType?
     def between(
         self,
         before: typing.Type[TokenKind],
@@ -355,7 +387,7 @@ class Parser:
         parser: Callable[[], T],
     ) -> tuple[lex.Token, lex.Token, T]:
         """
-        Parse T with preceding and succeeding tokens of specified kinds from token stream.
+        Parse NodeT with preceding and succeeding tokens of specified kinds from token stream.
 
         Example:
             Consider a token stream with the following tokens at its front: LeftBrace T RightBrace ...
@@ -369,7 +401,7 @@ class Parser:
             parser: () -> T - Parser which defines valid Ts.
 
         Returns:
-            lex.Token, lex.Token, T - Consumed before and after tokens and parsed T, respectively.
+            lex.Token, lex.Token, T - Consumed before token, after token, and parsed T, respectively.
 
         Raises:
             UnexpectedToken - Stream could not parse the before token, T, or after token.
@@ -383,45 +415,16 @@ class Parser:
 
         return before_token, after_token, node
 
-    # TODO: This doesn't need to be in this class.
-    # Create combinator module that contains generic combinators. (This and others)
-    def many(self, parser: Callable[[], T | None]) -> list[T]:
-        """
-        Parse and collect Ts.
+    def choice(self, parsers: list[Callable[[], T]]) -> T:
+        for parser in parsers:
+            node_or_none = self.try_parse(parser)
 
-        Example:
-            Consider a parse source that has the following types of items to parse at
-            its front: T T T U V T T ...
+            if node_or_none is not None:
+                return node_or_none
 
-            Provided parser should return None when U is encountered. Higher order parser will
-            return [T, T, T].
+        raise UnexpectedToken
 
-        Parameters:
-            parser: () -> T | None - Optional T parser. Higher order parsing concludes
-            when parser returns None.
-
-        Returns:
-            list[T] - Parsed Ts produced via parser.
-
-        Raises:
-            RecursionError - Parser did not return None, causing Stack Overflow.
-            Any - Uncaught Exception raised by parser.
-        """
-
-        items: list[T] = []
-
-        # TODO: more functional way to represent this for sure. maybe something like
-        # functools.reduce.
-        while True:
-            item_or_none = parser()
-
-            if item_or_none is None:
-                break
-
-            items.append(item_or_none)
-
-        return items
-
+    # TODO
     def parse_token(self, kind: typing.Type[TokenKind]) -> lex.Token:
         """
         Parse token of given kind from token stream.
@@ -447,6 +450,7 @@ class Parser:
 
         return self.next()
 
+    # TODO
     def parse_keyword(self, kind: lex.KeywordKind) -> Keyword:
         """
         Parse Keyword given kind from token stream.
@@ -475,6 +479,7 @@ class Parser:
         self.drop()
         return Keyword(token.span, token.kind.keyword)
 
+    # TODO
     def parse_identifier(self) -> Identifier:
         """
         Parse Identifier from token stream.
@@ -488,12 +493,12 @@ class Parser:
         """
 
         token = self.parse_token(lex.Identifier)
-        # TODO: refactor TokenKind hierarchy in order to remove noisy isinstance checks.
         if not isinstance(token.kind, lex.Identifier):
             raise UnexpectedToken
 
         return Identifier(token.span, token.kind.name)
 
+    # TODO
     def parse_integer(self) -> Integer:
         """
         Parse Integer from token stream.
@@ -530,32 +535,22 @@ class Parser:
         return Expression(ident_or_int.span, ident_or_int)
 
     def parse_primitive_type(self) -> PrimitiveType:
-        primitives = [
-            (lex.KeywordKind.UINT, PrimitiveKind.UINT),
-            (lex.KeywordKind.INT, PrimitiveKind.INT),
-        ]
+        primitives_mapping: dict[lex.KeywordKind, PrimitiveKind] = {
+            lex.KeywordKind.Uint: PrimitiveKind.Uint,
+            lex.KeywordKind.Int: PrimitiveKind.Int,
+        }
 
-        # TODO: the pattern of iterating over a set of parsers is repeated twice.
-        # maybe introduce a new combinator, "parse_from"
+        parsed_keyword = self.choice(
+            [lambda: self.parse_keyword(kw) for kw in primitives_mapping]
+        )
 
-        # Search for a Keyword token corresponding to the PrimitiveType
-        # KeywordKind. If there is an UnexpectedToken, then we'll try to parse
-        # the next PrimitiveType KeywordKind. If there isn't, then we've parsed
-        # the base of a Type and can progress to checking for array types.
-        for keyword, primitive in primitives:
-            parsed_keyword_or_none = self.try_parse(lambda: self.parse_keyword(keyword))
-
-            if parsed_keyword_or_none is not None:
-                return PrimitiveType(parsed_keyword_or_none.span, primitive)
-
-        raise UnexpectedToken
+        return PrimitiveType(
+            parsed_keyword.span, primitives_mapping[parsed_keyword.kind]
+        )
 
     def parse_identifier_type(self) -> IdentifierType:
-        ident_or_none = self.try_parse(self.parse_identifier)
-        if ident_or_none is not None:
-            return IdentifierType(ident_or_none.span, ident_or_none)
-
-        raise UnexpectedToken
+        ident = self.parse_identifier()
+        return IdentifierType(ident.span, ident)
 
     def parse_type(self) -> Type:
         """
@@ -577,19 +572,19 @@ class Parser:
             self.parse_identifier_type,
         )
 
-        def parse_bounds() -> tuple[Expression, lex.Span]:
-            _, right_bracket, expr = self.between(
-                lex.LeftBracket, lex.RightBracket, self.parse_expression
-            )
-
-            return expr, right_bracket.span
-
         def maybe_parse_bounds() -> tuple[Expression, lex.Span] | None:
-            return self.parse_if(
+            def parse_bounds() -> tuple[Expression, lex.Span]:
+                _, right_bracket, expr = self.between(
+                    lex.LeftBracket, lex.RightBracket, self.parse_expression
+                )
+
+                return expr, right_bracket.span
+
+            return parse_if(
                 parse_bounds, lambda: isinstance(self.peek(), lex.LeftBracket)
             )
 
-        exprs_and_spans = self.many(maybe_parse_bounds)
+        exprs_and_spans = many(maybe_parse_bounds)
 
         # TODO: there is a functional way to express this. something similar
         # to functools.reduce maybe.
@@ -637,8 +632,7 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Const.
         """
 
-        const = self.parse_keyword(lex.KeywordKind.CONST)
-
+        const = self.parse_keyword(lex.KeywordKind.Const)
         field = self.parse_field()
 
         self.parse_token(lex.Equals)
@@ -663,17 +657,13 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Struct.
         """
 
-        struct = self.parse_keyword(lex.KeywordKind.STRUCT)
-
+        struct = self.parse_keyword(lex.KeywordKind.Struct)
         ident = self.parse_identifier()
-
-        def field_then_comma() -> Field | None:
-            return self.and_then(self.parse_field, lex.Comma)
 
         _, _, fields = self.between(
             lex.LeftBrace,
             lex.RightBrace,
-            lambda: self.many(field_then_comma),
+            lambda: many(lambda: self.and_then(self.parse_field, lex.Comma)),
         )
 
         semicolon = self.parse_token(lex.SemiColon)
@@ -694,17 +684,13 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Enum.
         """
 
-        enum = self.parse_keyword(lex.KeywordKind.ENUM)
-
+        enum = self.parse_keyword(lex.KeywordKind.Enum)
         ident = self.parse_identifier()
-
-        def ident_then_comma() -> Identifier | None:
-            return self.and_then(self.parse_identifier, lex.Comma)
 
         _, _, variants = self.between(
             lex.LeftBrace,
             lex.RightBrace,
-            lambda: self.many(ident_then_comma),
+            lambda: many(lambda: self.and_then(self.parse_identifier, lex.Comma)),
         )
 
         semicolon = self.parse_token(lex.SemiColon)
@@ -725,8 +711,7 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Typedef.
         """
 
-        typedef = self.parse_keyword(lex.KeywordKind.TYPEDEF)
-
+        typedef = self.parse_keyword(lex.KeywordKind.Typedef)
         field = self.parse_field()
 
         semicolon = self.parse_token(lex.SemiColon)
@@ -750,29 +735,14 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Definition.
         """
 
-        definition_parsers: list[Callable[[], Definition]] = [
-            self.parse_const,
-            self.parse_struct,
-            self.parse_enum,
-            self.parse_typedef,
-        ]
-
-        # Try to parse each type of definition. If it succeeds, then return that definition.
-        # However, a ParseError might be raised. These include UnexpectedEOF and UnexpectedToken.
-        # In the case of an UnexpectedEOF, that means that the token stream was unexpectedly
-        # exhausted. This is a syntactic error, it means that tokens were missing. Maybe a missing
-        # semicolon, so we raise that exception to our caller. However, if for example an
-        # UnexpectedToken exception occurs, this likely means that the token stream doesn't
-        # currently have the target definition at the front. In that case, we ignore the
-        # exception and continue onwards and attempt to parse the next type of definition.
-
-        for parser in definition_parsers:
-            option = self.try_parse(parser)
-
-            if option is not None:
-                return option
-
-        raise UnexpectedToken
+        return self.choice(
+            [
+                self.parse_const,
+                self.parse_struct,
+                self.parse_enum,
+                self.parse_typedef,
+            ]
+        )
 
     def parse_module(self) -> Module:
         """
@@ -788,17 +758,13 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Module.
         """
 
-        module = self.parse_keyword(lex.KeywordKind.MODULE)
-
+        module = self.parse_keyword(lex.KeywordKind.Module)
         ident = self.parse_identifier()
-
-        def try_parse_definition() -> Definition | None:
-            return self.try_parse(self.parse_definition)
 
         _, _, definitions = self.between(
             before=lex.LeftBrace,
             after=lex.RightBrace,
-            parser=lambda: self.many(try_parse_definition),
+            parser=lambda: many(lambda: self.try_parse(self.parse_definition)),
         )
 
         semicolon = self.parse_token(lex.SemiColon)

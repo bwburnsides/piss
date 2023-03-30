@@ -74,13 +74,13 @@ PrimitiveTypedefFixtureType: Callable[
 def primitive_typedef() -> PrimitiveTypedefType:
     node = parse.Typedef(
         Span(),
-        parse.PrimitiveType(Span(), parse.PrimitiveKind.INT),
+        parse.PrimitiveType(Span(), parse.PrimitiveKind.Int),
         parse.Identifier(Span(), "FooType"),
     )
 
     tokens = [
-        SimpleToken(lex.Keyword(KeywordKind.TYPEDEF)),
-        SimpleToken(lex.Keyword(KeywordKind.INT)),
+        SimpleToken(lex.Keyword(KeywordKind.Typedef)),
+        SimpleToken(lex.Keyword(KeywordKind.Int)),
         SimpleToken(lex.Identifier("FooType")),
         SimpleToken(lex.SemiColon()),
     ]
@@ -97,7 +97,7 @@ MultiVariantEnumFixtureType: Callable[
 @MultiVariantEnumFixtureType
 def multi_variant_enum() -> MultiVariantEnumType:
     tokens = [
-        SimpleToken(lex.Keyword(KeywordKind.ENUM)),
+        SimpleToken(lex.Keyword(KeywordKind.Enum)),
         SimpleToken(lex.Identifier("Color")),
         SimpleToken(lex.LeftBrace()),
         SimpleToken(lex.Identifier("RED")),
@@ -132,7 +132,7 @@ MultiFieldStructFixtureType: Callable[
 @MultiFieldStructFixtureType
 def multi_field_struct() -> MultiFieldStructType:
     tokens = [
-        SimpleToken(lex.Keyword(KeywordKind.STRUCT)),
+        SimpleToken(lex.Keyword(KeywordKind.Struct)),
         SimpleToken(lex.Identifier("MyStruct")),
         SimpleToken(lex.LeftBrace()),
         SimpleToken(lex.Identifier("TypeA")),
@@ -202,17 +202,17 @@ def test_parse_second_token() -> None:
 
 
 def test_parse_keyword() -> None:
-    token = SimpleToken(lex.Keyword(KeywordKind.MODULE))
-    expected_node = parse.Keyword(token.span, KeywordKind.MODULE)
+    token = SimpleToken(lex.Keyword(KeywordKind.Module))
+    expected_node = parse.Keyword(token.span, KeywordKind.Module)
 
     parser = Parser([token])
 
-    assert parser.parse_keyword(KeywordKind.MODULE) == expected_node
+    assert parser.parse_keyword(KeywordKind.Module) == expected_node
 
 
 def test_parse_second_keyword() -> None:
-    token = SimpleToken(lex.Keyword(KeywordKind.MODULE))
-    expected_node = parse.Keyword(token.span, KeywordKind.MODULE)
+    token = SimpleToken(lex.Keyword(KeywordKind.Module))
+    expected_node = parse.Keyword(token.span, KeywordKind.Module)
 
     parser = Parser(
         [
@@ -222,7 +222,7 @@ def test_parse_second_keyword() -> None:
     )
     parser.parse_token(lex.RightBrace)
 
-    assert parser.parse_keyword(KeywordKind.MODULE) == expected_node
+    assert parser.parse_keyword(KeywordKind.Module) == expected_node
 
 
 def test_parse_identifier() -> None:
@@ -309,11 +309,11 @@ def test_parse_identifier_expression() -> None:
 
 
 def test_parse_primitive_type() -> None:
-    token = SimpleToken(lex.Keyword(KeywordKind.INT))
+    token = SimpleToken(lex.Keyword(KeywordKind.Int))
 
     expected_node = parse.PrimitiveType(
         token.span,
-        parse.PrimitiveKind.INT,
+        parse.PrimitiveKind.Int,
     )
 
     parser = Parser([token])
@@ -340,13 +340,13 @@ def test_parse_array_type() -> None:
 
     expected_node = parse.ArrayType(
         Span(),
-        parse.PrimitiveType(Span(), parse.PrimitiveKind.INT),
+        parse.PrimitiveType(Span(), parse.PrimitiveKind.Int),
         parse.Expression(Span(), parse.Integer(Span(), 5)),
     )
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.INT)),
+            SimpleToken(lex.Keyword(KeywordKind.Int)),
             SimpleToken(lex.LeftBracket()),
             SimpleToken(lex.Integer(5)),
             SimpleToken(lex.RightBracket()),
@@ -363,7 +363,7 @@ def test_parse_nested_array_type() -> None:
         Span(),
         parse.ArrayType(
             Span(),
-            parse.PrimitiveType(Span(), parse.PrimitiveKind.INT),
+            parse.PrimitiveType(Span(), parse.PrimitiveKind.Int),
             parse.Expression(Span(), parse.Integer(Span(), 5)),
         ),
         parse.Expression(Span(), parse.Identifier(Span(), "ConstFoo")),
@@ -371,7 +371,7 @@ def test_parse_nested_array_type() -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.INT)),
+            SimpleToken(lex.Keyword(KeywordKind.Int)),
             SimpleToken(lex.LeftBracket()),
             SimpleToken(lex.Integer(5)),
             SimpleToken(lex.RightBracket()),
@@ -385,13 +385,13 @@ def test_parse_nested_array_type() -> None:
 
 
 def test_parse_field_with_primitive_type() -> None:
-    type = SimpleToken(lex.Keyword(KeywordKind.INT))
+    type = SimpleToken(lex.Keyword(KeywordKind.Int))
     ident = SimpleToken(lex.Identifier("foo"))
     assert isinstance(ident.kind, lex.Identifier)
 
     expected_node = parse.Field(
         span=Span(),
-        kind=parse.PrimitiveType(type.span, parse.PrimitiveKind.INT),
+        kind=parse.PrimitiveType(type.span, parse.PrimitiveKind.Int),
         ident=parse.Identifier(ident.span, ident.kind.name),
     )
 
@@ -426,7 +426,7 @@ def test_parse_const(simple_field: SimpleFieldType) -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.CONST)),
+            SimpleToken(lex.Keyword(KeywordKind.Const)),
             SimpleToken(simple_field.type),
             SimpleToken(simple_field.name),
             SimpleToken(lex.Equals()),
@@ -455,7 +455,7 @@ def test_parse_simple_struct(simple_field: SimpleFieldType) -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.STRUCT)),
+            SimpleToken(lex.Keyword(KeywordKind.Struct)),
             SimpleToken(lex.Identifier("MyStruct")),
             SimpleToken(lex.LeftBrace()),
             SimpleToken(lex.Identifier("FooType")),
@@ -480,7 +480,7 @@ def test_parse_empty_struct() -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.STRUCT)),
+            SimpleToken(lex.Keyword(KeywordKind.Struct)),
             SimpleToken(lex.Identifier("MyStruct")),
             SimpleToken(lex.LeftBrace()),
             SimpleToken(lex.RightBrace()),
@@ -510,7 +510,7 @@ def test_parse_struct_missing_semicolon_at_end_of_stream() -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.STRUCT)),
+            SimpleToken(lex.Keyword(KeywordKind.Struct)),
             SimpleToken(lex.Identifier("MyStruct")),
             SimpleToken(lex.LeftBrace()),
             SimpleToken(lex.Identifier("TypeA")),
@@ -535,7 +535,7 @@ def test_parse_struct_missing_right_brace_in_stream() -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.STRUCT)),
+            SimpleToken(lex.Keyword(KeywordKind.Struct)),
             SimpleToken(lex.Identifier("MyStruct")),
             SimpleToken(lex.LeftBrace()),
             SimpleToken(lex.Identifier("TypeA")),
@@ -564,7 +564,7 @@ def test_parse_simple_enum() -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.ENUM)),
+            SimpleToken(lex.Keyword(KeywordKind.Enum)),
             SimpleToken(lex.Identifier("Color")),
             SimpleToken(lex.LeftBrace()),
             SimpleToken(lex.Identifier("RED")),
@@ -584,7 +584,7 @@ def test_parse_empty_enum() -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.ENUM)),
+            SimpleToken(lex.Keyword(KeywordKind.Enum)),
             SimpleToken(lex.Identifier("Color")),
             SimpleToken(lex.LeftBrace()),
             SimpleToken(lex.RightBrace()),
@@ -626,7 +626,7 @@ def test_parse_typedef_with_ident_type() -> None:
 
     parser = Parser(
         [
-            SimpleToken(lex.Keyword(KeywordKind.TYPEDEF)),
+            SimpleToken(lex.Keyword(KeywordKind.Typedef)),
             SimpleToken(lex.Identifier("FooType")),
             SimpleToken(lex.Identifier("BarType")),
             SimpleToken(lex.SemiColon()),
@@ -674,7 +674,7 @@ def test_parse_module(
 ) -> None:
     tokens: list[lex.Token] = []
 
-    tokens.append(SimpleToken(lex.Keyword(KeywordKind.MODULE)))
+    tokens.append(SimpleToken(lex.Keyword(KeywordKind.Module)))
     tokens.append(SimpleToken(lex.Identifier("MyModule")))
     tokens.append(SimpleToken(lex.LeftBrace()))
     tokens += (

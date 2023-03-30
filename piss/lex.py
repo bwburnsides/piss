@@ -12,13 +12,13 @@ class KeywordKind(enum.Enum):
     KeywordKind enumerates the keywords which are legal in PISS IDL.
     """
 
-    CONST = "const"
-    STRUCT = "struct"
-    ENUM = "enum"
-    TYPEDEF = "typedef"
-    MODULE = "module"
-    UINT = "uint"
-    INT = "int"
+    Const = "const"
+    Struct = "struct"
+    Enum = "enum"
+    Typedef = "typedef"
+    Module = "module"
+    Uint = "uint"
+    Int = "int"
 
 
 @dataclass
