@@ -4,9 +4,9 @@ Tools for parsing the PISS grammar.
 
 from dataclasses import dataclass
 import enum
-from piss import lex
 import typing
 from typing import Callable
+from piss import lex
 from piss.lex import TokenKind
 
 
@@ -57,8 +57,7 @@ def many(parser: Callable[[], T | None]) -> list[T]:
 
     items: list[T] = []
 
-    # TODO: more functional way to represent this for sure. maybe something like
-    # functools.reduce.
+    # TODO: More functional expression?
     while True:
         item_or_none = parser()
 
@@ -210,7 +209,7 @@ class Parser:
         tokens: list[Token] - Stream of tokens to parse.
     """
 
-    def __init__(self, tokens: list[lex.Token]):
+    def __init__(self, tokens: list[lex.Token[TokenKind]]):
         self.tokens = tokens
         self.index = 0
         self.state: list[int] = []
@@ -231,7 +230,7 @@ class Parser:
 
         return current_token.kind
 
-    def next(self) -> lex.Token:
+    def next(self) -> lex.Token[TokenKind]:
         """
         Return current token and advance the stream pointer.
 
@@ -291,17 +290,23 @@ class Parser:
             Any - Uncaught Exception raised by parser. UnexpectedToken is handled.
         """
 
+        clean_up: Callable[[], int] | Callable[[], None] = self.drop
+
         self.push()
+
         try:
-            return parser()
+            item = parser()
         except UnexpectedEOF:
-            self.pop()
+            clean_up = self.pop
             raise UnexpectedEOF
         except UnexpectedToken:
-            self.drop()
+            clean_up = self.pop
             return None
+        else:
+            return item
+        finally:
+            clean_up()
 
-    # TODO: refactor TokenKind relationships to remove cheesy typing.Type needs.
     def and_then(
         self,
         parser: Callable[[], GenericNodeT],
@@ -316,7 +321,7 @@ class Parser:
             In which case parsed T is returned and T + are consumed.
 
             Consider and_then(parsed_T, +) applied to stream: T - V + X ...
-            In which case UnexpectedToken is raised no tokens are consumed.
+            In which case UnexpectedToken is raised and no tokens are consumed.
 
             Consider and_then(Parsed_T, +) applied to stream: U + V - X ...
             In which case None is returned and no tokens are consumed.
@@ -335,12 +340,11 @@ class Parser:
             Any - Uncaught Exception raised by parser.
         """
 
-        node_or_none = self.try_parse(parser)
+        def check_terminator(_: GenericNodeT) -> bool:
+            token_or_none = self.try_parse(lambda: self.parse_token(terminator))
+            return False if token_or_none is None else True
 
-        if node_or_none is not None:
-            self.parse_token(terminator)
-
-        return node_or_none
+        return self.try_parse(lambda: self.then_check(parser, check_terminator))
 
     def either_or(
         self,
@@ -382,10 +386,10 @@ class Parser:
 
     def between(
         self,
-        before: typing.Type[TokenKind],
-        after: typing.Type[TokenKind],
+        before: typing.Type[lex.GenericTokenKindT],
+        after: typing.Type[lex.GenericTokenKindU],
         parser: Callable[[], T],
-    ) -> tuple[lex.Token, lex.Token, T]:
+    ) -> tuple[lex.Token[lex.GenericTokenKindT], lex.Token[lex.GenericTokenKindU], T]:
         """
         Parse NodeT with preceding and succeeding tokens of specified kinds from token stream.
 
@@ -424,8 +428,22 @@ class Parser:
 
         raise UnexpectedToken
 
+    def then_check(
+        self,
+        parser: Callable[[], T],
+        check: Callable[[T], bool],
+    ) -> T:
+        item_or_none = self.try_parse(parser)
+
+        if item_or_none is not None and check(item_or_none):
+            return item_or_none
+
+        raise UnexpectedToken
+
     # TODO
-    def parse_token(self, kind: typing.Type[TokenKind]) -> lex.Token:
+    def parse_token(
+        self, kind: typing.Type[lex.GenericTokenKindT]
+    ) -> lex.Token[lex.GenericTokenKindT]:
         """
         Parse token of given kind from token stream.
 
@@ -445,12 +463,11 @@ class Parser:
         if peeked is None:
             raise UnexpectedEOF
 
-        if not isinstance(peeked, kind):  # pyright: reportUnnecessaryIsInstance=false
+        if not isinstance(peeked, kind):
             raise UnexpectedToken
 
-        return self.next()
+        return typing.cast(lex.Token[lex.GenericTokenKindT], self.next())
 
-    # TODO
     def parse_keyword(self, kind: lex.KeywordKind) -> Keyword:
         """
         Parse Keyword given kind from token stream.
@@ -466,20 +483,13 @@ class Parser:
             UnexpectedToken - Token was not expected type.
         """
 
-        self.push()
-        token = self.parse_token(lex.Keyword)
-        if not isinstance(token.kind, lex.Keyword):
-            self.pop()
-            raise UnexpectedToken
+        token: lex.Token[lex.Keyword] = self.then_check(
+            parser=lambda: self.parse_token(lex.Keyword),
+            check=lambda token: token.kind.keyword is kind,
+        )
 
-        if token.kind.keyword is not kind:
-            self.pop()
-            raise UnexpectedToken
-
-        self.drop()
         return Keyword(token.span, token.kind.keyword)
 
-    # TODO
     def parse_identifier(self) -> Identifier:
         """
         Parse Identifier from token stream.
@@ -493,12 +503,8 @@ class Parser:
         """
 
         token = self.parse_token(lex.Identifier)
-        if not isinstance(token.kind, lex.Identifier):
-            raise UnexpectedToken
-
         return Identifier(token.span, token.kind.name)
 
-    # TODO
     def parse_integer(self) -> Integer:
         """
         Parse Integer from token stream.
@@ -512,9 +518,6 @@ class Parser:
         """
 
         token = self.parse_token(lex.Integer)
-        if not isinstance(token.kind, lex.Integer):
-            raise UnexpectedToken
-
         return Integer(token.span, token.kind.value)
 
     def parse_expression(self) -> Expression:
@@ -574,7 +577,7 @@ class Parser:
 
         def maybe_parse_bounds() -> tuple[Expression, lex.Span] | None:
             def parse_bounds() -> tuple[Expression, lex.Span]:
-                _, right_bracket, expr = self.between(
+                _before, right_bracket, expr = self.between(
                     lex.LeftBracket, lex.RightBracket, self.parse_expression
                 )
 
@@ -586,8 +589,7 @@ class Parser:
 
         exprs_and_spans = many(maybe_parse_bounds)
 
-        # TODO: there is a functional way to express this. something similar
-        # to functools.reduce maybe.
+        # TODO: more functional expression?
         for expr, span in exprs_and_spans:
             start_span = parsed_type.span
 
@@ -660,7 +662,7 @@ class Parser:
         struct = self.parse_keyword(lex.KeywordKind.Struct)
         ident = self.parse_identifier()
 
-        _, _, fields = self.between(
+        _before, _after, fields = self.between(
             lex.LeftBrace,
             lex.RightBrace,
             lambda: many(lambda: self.and_then(self.parse_field, lex.Comma)),
@@ -687,7 +689,7 @@ class Parser:
         enum = self.parse_keyword(lex.KeywordKind.Enum)
         ident = self.parse_identifier()
 
-        _, _, variants = self.between(
+        _before, _after, variants = self.between(
             lex.LeftBrace,
             lex.RightBrace,
             lambda: many(lambda: self.and_then(self.parse_identifier, lex.Comma)),
@@ -761,7 +763,7 @@ class Parser:
         module = self.parse_keyword(lex.KeywordKind.Module)
         ident = self.parse_identifier()
 
-        _, _, definitions = self.between(
+        _before, _after, definitions = self.between(
             before=lex.LeftBrace,
             after=lex.RightBrace,
             parser=lambda: many(lambda: self.try_parse(self.parse_definition)),

@@ -10,7 +10,9 @@ from piss.lex import KeywordKind, Span
 from typing import Callable, NamedTuple
 from functools import partial
 
-SimpleToken = partial(lex.Token, span=Span())
+SimpleToken: Callable[[lex.TokenKind], lex.Token[lex.TokenKind]] = partial(
+    lex.Token[lex.TokenKind], span=Span()
+)
 
 
 class SimpleFieldType(NamedTuple):
@@ -20,17 +22,17 @@ class SimpleFieldType(NamedTuple):
 
 
 class PrimitiveTypedefType(NamedTuple):
-    tokens: list[lex.Token]
+    tokens: list[lex.Token[lex.TokenKind]]
     node: parse.Typedef
 
 
 class MultiVariantEnumType(NamedTuple):
-    tokens: list[lex.Token]
+    tokens: list[lex.Token[lex.TokenKind]]
     node: parse.Enum
 
 
 class MultiFieldStructType(NamedTuple):
-    tokens: list[lex.Token]
+    tokens: list[lex.Token[lex.TokenKind]]
     node: parse.Struct
 
 
@@ -672,7 +674,7 @@ def test_parse_module(
     multi_field_struct: MultiFieldStructType,
     multi_variant_enum: MultiVariantEnumType,
 ) -> None:
-    tokens: list[lex.Token] = []
+    tokens: list[lex.Token[lex.TokenKind]] = []
 
     tokens.append(SimpleToken(lex.Keyword(KeywordKind.Module)))
     tokens.append(SimpleToken(lex.Identifier("MyModule")))

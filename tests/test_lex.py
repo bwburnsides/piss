@@ -52,7 +52,7 @@ def test_fail_tokenize_identifier_or_keyword(
     ],
 )
 def test_tokenize_integer(
-    input: str, expected_token: lex.Token, expected_chars_read: int
+    input: str, expected_token: lex.Token[lex.TokenKind], expected_chars_read: int
 ) -> None:
     token, chars_read = lex.tokenize_integer(input)
 

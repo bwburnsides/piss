@@ -4,7 +4,7 @@ Tools for tokenizing the PISS lexicon.
 
 from dataclasses import dataclass
 import enum
-from typing import Callable
+from typing import Callable, Generic, TypeVar
 
 
 class KeywordKind(enum.Enum):
@@ -21,9 +21,16 @@ class KeywordKind(enum.Enum):
     Int = "int"
 
 
+GenericKeywordKind = TypeVar("GenericKeywordKind", bound=KeywordKind)
+
+
 @dataclass
 class TokenKind:
     ...
+
+
+GenericTokenKindT = TypeVar("GenericTokenKindT", bound=TokenKind)
+GenericTokenKindU = TypeVar("GenericTokenKindU", bound=TokenKind)
 
 
 @dataclass
@@ -93,8 +100,8 @@ class Span:
 
 
 @dataclass
-class Token:
-    kind: TokenKind
+class Token(Generic[GenericTokenKindT]):
+    kind: GenericTokenKindT
     span: Span
 
 
@@ -368,7 +375,7 @@ class Tokenizer:
             return f'Tokenizer("{self.remaining_text}")'
         return f'Tokenizer("{self.remaining_text[0:15]}...")'
 
-    def next_token(self) -> Token | None:
+    def next_token(self) -> Token[TokenKind] | None:
         """
         Consume one token from front of input, if it exists.
 
@@ -434,7 +441,7 @@ class Tokenizer:
         self.current_index += count
 
 
-def tokenize(data: str) -> list[Token]:
+def tokenize(data: str) -> list[Token[TokenKind]]:
     """
     Produce a list of Tokens from the provided input.
 
@@ -446,7 +453,7 @@ def tokenize(data: str) -> list[Token]:
     """
 
     tokenizer = Tokenizer(data)
-    tokens: list[Token] = []
+    tokens: list[Token[TokenKind]] = []
 
     while True:
         result = tokenizer.next_token()
