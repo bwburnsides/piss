@@ -12,9 +12,12 @@ from piss.lex import TokenKind
 
 T = typing.TypeVar("T")
 
+ParserType = Callable[[], T]
+OptionalParserType = Callable[[], T | None]
+
 
 def parse_if(
-    parser: Callable[[], T],
+    parser: ParserType[T],
     predicate: Callable[[], bool],
 ) -> T | None:
     """
@@ -32,7 +35,7 @@ def parse_if(
     return parser() if predicate() else None
 
 
-def many(parser: Callable[[], T | None]) -> list[T]:
+def many(parser: OptionalParserType[T]) -> list[T]:
     """
     Parse and collect Ts.
 
@@ -55,18 +58,7 @@ def many(parser: Callable[[], T | None]) -> list[T]:
         Any - Uncaught Exception raised by parser.
     """
 
-    items: list[T] = []
-
-    # TODO: More functional expression?
-    while True:
-        item_or_none = parser()
-
-        if item_or_none is None:
-            break
-
-        items.append(item_or_none)
-
-    return items
+    return list(iter(parser, None))
 
 
 @dataclass
@@ -274,9 +266,10 @@ class Parser:
         except IndexError:
             raise ParseError
 
-    def try_parse(self, parser: Callable[[], T]) -> T | None:
+    def try_parse(self, parser: ParserType[T]) -> T | None:
         """
-        Attempt to parse T from token stream. No tokens are consumed if parsing fails.
+        Attempt to parse T from token stream. No tokens are consumed
+        if unexpected token is encountered.
 
         Parameters:
             parser: () -> T - Parser for T.
@@ -307,9 +300,36 @@ class Parser:
         finally:
             clean_up()
 
+    def then_check(
+        self,
+        parser: ParserType[T],
+        check: Callable[[T], bool],
+    ) -> T:
+        """
+        Parse node and then verify post condition. Parsed node is only returned if post condition is True.
+        Tokens are not consumed if condition is not True.
+
+        Parameters:
+            parser: () -> T - Parser for node type T.
+
+        Returns:
+            T - Parsed node which fulfilled post check.
+
+        Raises:
+            UnexpectedToken - Stream could not parse the before token, T, or after token.
+            UnexpectedEOF - Stream was exhausted while parsing the before token, T, or after Token.
+        """
+
+        item_or_none = self.try_parse(parser)
+
+        if item_or_none is not None and check(item_or_none):
+            return item_or_none
+
+        raise UnexpectedToken
+
     def and_then(
         self,
-        parser: Callable[[], GenericNodeT],
+        parser: ParserType[GenericNodeT],
         terminator: typing.Type[TokenKind],
     ) -> GenericNodeT | None:
         """
@@ -342,14 +362,18 @@ class Parser:
 
         def check_terminator(_: GenericNodeT) -> bool:
             token_or_none = self.try_parse(lambda: self.parse_token(terminator))
-            return False if token_or_none is None else True
 
-        return self.try_parse(lambda: self.then_check(parser, check_terminator))
+            if token_or_none is None:
+                return False
+
+            return True
+
+        return self.try_parse(lambda: self.then_check(parser, check=check_terminator))
 
     def either_or(
         self,
-        first_choice: Callable[[], GenericNodeT],
-        second_choice: Callable[[], GenericNodeU],
+        first_choice: ParserType[GenericNodeT],
+        second_choice: ParserType[GenericNodeU],
     ) -> GenericNodeT | GenericNodeU:
         """
         Parse one of two choices from parse source. Attempt to parse first choice and return item if successful.
@@ -378,7 +402,11 @@ class Parser:
             Any - Uncaught Exception raised by either parser. UnexpectedToken thrown by higher preference NodeT parser is handled.
         """
 
-        choices: list[Callable[[], GenericNodeT | GenericNodeU]] = [
+        # either_or is really just a special case of the choice parser. Each are given a set of parsers and will return the result
+        # of whichever one succeeds first, and will raise an Exception if parsing fails. In the case of either_or, the set of parsers
+        # to choose from is strictly two. We implement either_or by constructing a list from the parser parameters, then passing it
+        # to choice to take care of.
+        choices: list[ParserType[GenericNodeT | GenericNodeU]] = [
             first_choice,
             second_choice,
         ]
@@ -388,7 +416,7 @@ class Parser:
         self,
         before: typing.Type[lex.GenericTokenKindT],
         after: typing.Type[lex.GenericTokenKindU],
-        parser: Callable[[], T],
+        parser: ParserType[T],
     ) -> tuple[lex.Token[lex.GenericTokenKindT], lex.Token[lex.GenericTokenKindU], T]:
         """
         Parse NodeT with preceding and succeeding tokens of specified kinds from token stream.
@@ -419,7 +447,22 @@ class Parser:
 
         return before_token, after_token, node
 
-    def choice(self, parsers: list[Callable[[], T]]) -> T:
+    def choice(self, parsers: list[ParserType[T]]) -> T:
+        """
+        Parse node from a choice of parsers. Parsers are chosen sequentially from the start
+        of the list until the first success.
+
+        Parameters:
+            parsers: list[() -> T] - List of parsers to choose from.
+
+        Returns:
+            T - First successfully parsed T node.
+
+        Raises:
+            UnexpectedToken - Failed to choose any parser due to unexpected tokens in stream.
+            Any - Uncaught Exception raised by any parser. UnexpectedToken is handled.
+        """
+
         for parser in parsers:
             node_or_none = self.try_parse(parser)
 
@@ -428,19 +471,6 @@ class Parser:
 
         raise UnexpectedToken
 
-    def then_check(
-        self,
-        parser: Callable[[], T],
-        check: Callable[[T], bool],
-    ) -> T:
-        item_or_none = self.try_parse(parser)
-
-        if item_or_none is not None and check(item_or_none):
-            return item_or_none
-
-        raise UnexpectedToken
-
-    # TODO
     def parse_token(
         self, kind: typing.Type[lex.GenericTokenKindT]
     ) -> lex.Token[lex.GenericTokenKindT]:
@@ -575,24 +605,22 @@ class Parser:
             self.parse_identifier_type,
         )
 
-        def maybe_parse_bounds() -> tuple[Expression, lex.Span] | None:
-            def parse_bounds() -> tuple[Expression, lex.Span]:
-                _before, right_bracket, expr = self.between(
-                    lex.LeftBracket, lex.RightBracket, self.parse_expression
-                )
-
-                return expr, right_bracket.span
-
-            return parse_if(
-                parse_bounds, lambda: isinstance(self.peek(), lex.LeftBracket)
+        def parse_bounds() -> tuple[Expression, lex.Span]:
+            _before, right_bracket, expr = self.between(
+                lex.LeftBracket, lex.RightBracket, self.parse_expression
             )
 
-        exprs_and_spans = many(maybe_parse_bounds)
+            return expr, right_bracket.span
 
-        # TODO: more functional expression?
+        exprs_and_spans = many(
+            lambda: parse_if(
+                parse_bounds, lambda: isinstance(self.peek(), lex.LeftBracket)
+            )
+        )
+
+        start_span = parsed_type.span
+
         for expr, span in exprs_and_spans:
-            start_span = parsed_type.span
-
             parsed_type = ArrayType(
                 start_span + span,
                 parsed_type,
