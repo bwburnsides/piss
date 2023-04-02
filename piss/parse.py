@@ -12,6 +12,7 @@ from piss.lex import TokenKind
 from functools import partial
 
 T = typing.TypeVar("T")
+U = typing.TypeVar("U")
 
 ParserType = Callable[[], T]
 OptionalParserType = Callable[[], T | None]
@@ -68,6 +69,23 @@ def many(parser: OptionalParserType[T]) -> list[T]:
             break
 
         items.append(item_or_none)
+
+    return items
+
+
+def vector(parser: OptionalParserType[T], delimiter: OptionalParserType[U]) -> list[T]:
+    items: list[T] = []
+
+    while True:
+        item_or_none = parser()
+        if item_or_none is None:
+            break
+
+        items.append(item_or_none)
+
+        delimiter_or_none = delimiter()
+        if delimiter_or_none is None:
+            break
 
     return items
 
@@ -758,7 +776,10 @@ class Parser:
         _before, _after, fields = self.between(
             lex.LeftBrace,
             lex.RightBrace,
-            lambda: many(lambda: self.and_then(self.parse_field, lex.Comma)),
+            lambda: vector(
+                lambda: self.try_parse(self.parse_field),
+                lambda: self.try_parse(lambda: self.parse_token(lex.Comma)),
+            ),
         )
 
         semicolon = self.parse_token(lex.SemiColon)
@@ -785,7 +806,10 @@ class Parser:
         _before, _after, variants = self.between(
             lex.LeftBrace,
             lex.RightBrace,
-            lambda: many(lambda: self.and_then(self.parse_identifier, lex.Comma)),
+            lambda: vector(
+                lambda: self.try_parse(self.parse_identifier),
+                lambda: self.try_parse(lambda: self.parse_token(lex.Comma)),
+            ),
         )
 
         semicolon = self.parse_token(lex.SemiColon)

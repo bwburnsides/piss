@@ -9,27 +9,36 @@ module Foo {
 
     struct Person {
         uint age,
-        int debt,
+        int debt
     };
 
     enum Color {
-        Red, Green, Blue,
+        Red, Green, Blue
     };
 
     const int THREE = 3;
 
     struct Span {
-        Int start,
-        Int stop,
+        int start,
+        int stop,
     };
 
     enum TokenKind {
-        LeftBrace, RightBrace, SemiColon,
+        LeftBrace, RightBrace, SemiColon
     };
 
     struct Token {
         Span span,
-        TokenKind kind,
+        TokenKind kind
+    };
+
+    typedef int[THREE] three_array;
+    // typedef int[THREE][10] matrix_type;
+
+    struct SomeStruct {
+        int Foo,
+        int Bar,
+        uint Baz
     };
 };
 """
@@ -57,10 +66,13 @@ class Printer(parse.NodeVisitor):
 
     def indent(self) -> None:
         self.indent_level += 1
-        self.output += "\n" + ("    " * self.indent_level)
+        self.newline()
 
     def dedent(self) -> None:
         self.indent_level -= 1
+        self.newline()
+
+    def newline(self) -> None:
         self.output += "\n" + ("    " * self.indent_level)
 
     def visit_keyword(self, keyword: parse.Keyword) -> None:
@@ -82,7 +94,9 @@ class Printer(parse.NodeVisitor):
         self.print(type.type.name)
 
     def visit_array_type(self, type: parse.ArrayType) -> None:
-        ...
+        self.print("list[")
+        type.type.accept(self)
+        self.print("]")
 
     def visit_field(self, field: parse.Field) -> None:
         field.ident.accept(self)
@@ -91,9 +105,13 @@ class Printer(parse.NodeVisitor):
 
     def visit_typedef(self, typedef: parse.Typedef) -> None:
         typedef.ident.accept(self)
-        self.print(" = ")
+        self.print(' = typing.NewType("')
+        typedef.ident.accept(self)
+        self.print('", ')
         typedef.kind.accept(self)
-        self.print("\n\n")
+        self.print(")")
+        self.newline()
+        self.newline()
 
     def visit_const(self, const: parse.Const) -> None:
         const.ident.accept(self)
@@ -101,7 +119,8 @@ class Printer(parse.NodeVisitor):
         const.kind.accept(self)
         self.print(" = ")
         const.expr.accept(self)
-        self.print("\n\n")
+        self.newline()
+        self.newline()
 
     def visit_enum(self, enum: parse.Enum) -> None:
         self.print("class ")
@@ -110,24 +129,25 @@ class Printer(parse.NodeVisitor):
 
         for variant in enum.variants:
             variant.accept(self)
-            self.print(" = enum.auto()\n")
+            self.print(" = enum.auto()")
+            self.newline()
 
         self.dedent()
 
     def visit_struct(self, struct: parse.Struct) -> None:
-        self.print("@dataclass\nclass ")
+        self.print("@dataclass\n class ")
+        self.newline()
         struct.ident.accept(self)
         self.print(":", indent=True)
 
         for field in struct.fields:
             field.accept(self)
-            self.print("\n")
+            self.newline()
 
         self.dedent()
 
     def visit_module(self, module: parse.Module) -> None:
-        for definition in module.definitions:
-            definition.accept(self)
+        module.accept(self)
 
 
 def emit_module(module: parse.Module) -> None:

@@ -43,11 +43,35 @@ SimpleFieldFixtureType: Callable[
 
 
 @SimpleFieldFixtureType
-def simple_field() -> SimpleFieldType:
+def simple_field_foo() -> SimpleFieldType:
     type = SimpleToken(lex.Identifier("FooType"))
     assert isinstance(type.kind, lex.Identifier)
 
     ident = SimpleToken(lex.Identifier("foo"))
+    assert isinstance(ident.kind, lex.Identifier)
+
+    expected_node = parse.Field(
+        span=Span(),
+        kind=parse.IdentifierType(
+            type.span,
+            parse.Identifier(type.span, type.kind.name),
+        ),
+        ident=parse.Identifier(ident.span, ident.kind.name),
+    )
+
+    return SimpleFieldType(
+        type.kind,
+        ident.kind,
+        expected_node,
+    )
+
+
+@SimpleFieldFixtureType
+def simple_field_bar() -> SimpleFieldType:
+    type = SimpleToken(lex.Identifier("BarType"))
+    assert isinstance(type.kind, lex.Identifier)
+
+    ident = SimpleToken(lex.Identifier("bar"))
     assert isinstance(ident.kind, lex.Identifier)
 
     expected_node = parse.Field(
@@ -402,15 +426,15 @@ def test_parse_field_with_primitive_type() -> None:
     assert parser.parse_field() == expected_node
 
 
-def test_parse_field_with_identifier_type(simple_field: SimpleFieldType) -> None:
-    type, ident, expected_node = simple_field
+def test_parse_field_with_identifier_type(simple_field_foo: SimpleFieldType) -> None:
+    type, ident, expected_node = simple_field_foo
 
     parser = Parser([SimpleToken(type), SimpleToken(ident)])
 
     assert parser.parse_field() == expected_node
 
 
-def test_parse_const(simple_field: SimpleFieldType) -> None:
+def test_parse_const(simple_field_foo: SimpleFieldType) -> None:
     expr = SimpleToken(lex.Integer(5))
     assert isinstance(expr.kind, lex.Integer)
 
@@ -418,8 +442,8 @@ def test_parse_const(simple_field: SimpleFieldType) -> None:
 
     expected_node = parse.Const(
         Span(),
-        simple_field.node.kind,
-        simple_field.node.ident,
+        simple_field_foo.node.kind,
+        simple_field_foo.node.ident,
         parse.Expression(
             Span(),
             parse.Integer(Span(), expr.kind.value),
@@ -429,8 +453,8 @@ def test_parse_const(simple_field: SimpleFieldType) -> None:
     parser = Parser(
         [
             SimpleToken(lex.Keyword(KeywordKind.Const)),
-            SimpleToken(simple_field.type),
-            SimpleToken(simple_field.name),
+            SimpleToken(simple_field_foo.type),
+            SimpleToken(simple_field_foo.name),
             SimpleToken(lex.Equals()),
             expr,
             SimpleToken(lex.SemiColon()),
@@ -440,7 +464,7 @@ def test_parse_const(simple_field: SimpleFieldType) -> None:
     assert parser.parse_const() == expected_node
 
 
-def test_parse_simple_struct(simple_field: SimpleFieldType) -> None:
+def test_parse_simple_struct(simple_field_foo: SimpleFieldType) -> None:
     struct_ident = parse.Identifier(Span(), "MyStruct")
 
     # struct MyStruct {
@@ -451,7 +475,7 @@ def test_parse_simple_struct(simple_field: SimpleFieldType) -> None:
         Span(),
         struct_ident,
         [
-            simple_field.node,
+            simple_field_foo.node,
         ],
     )
 
@@ -553,6 +577,74 @@ def test_parse_struct_missing_right_brace_in_stream() -> None:
 
     with pytest.raises(parse.UnexpectedToken):
         parser.parse_struct()
+
+
+def test_parse_struct_no_trailing_comma(simple_field_foo: SimpleFieldType) -> None:
+    struct_ident = parse.Identifier(Span(), "MyStruct")
+
+    # struct MyStruct {
+    #   FooType foo
+    # };
+
+    expected_node = parse.Struct(
+        Span(),
+        struct_ident,
+        [
+            simple_field_foo.node,
+        ],
+    )
+
+    parser = Parser(
+        [
+            SimpleToken(lex.Keyword(KeywordKind.Struct)),
+            SimpleToken(lex.Identifier("MyStruct")),
+            SimpleToken(lex.LeftBrace()),
+            SimpleToken(lex.Identifier("FooType")),
+            SimpleToken(lex.Identifier("foo")),
+            SimpleToken(lex.RightBrace()),
+            SimpleToken(lex.SemiColon()),
+        ]
+    )
+
+    assert parser.parse_struct() == expected_node
+
+
+def test_parse_struct_two_field_no_trailing_comma(
+    simple_field_foo: SimpleFieldType,
+    simple_field_bar: SimpleFieldType,
+) -> None:
+    struct_ident = parse.Identifier(Span(), "MyStruct")
+
+    # struct MyStruct {
+    #   FooType foo,
+    #   BarType bar
+    # };
+
+    expected_node = parse.Struct(
+        Span(),
+        struct_ident,
+        [
+            simple_field_foo.node,
+            simple_field_bar.node,
+        ],
+    )
+
+    parser = Parser(
+        [
+            SimpleToken(lex.Keyword(KeywordKind.Struct)),
+            SimpleToken(lex.Identifier("MyStruct")),
+            SimpleToken(lex.LeftBrace()),
+            SimpleToken(lex.Identifier("FooType")),
+            SimpleToken(lex.Identifier("foo")),
+            SimpleToken(lex.Comma()),
+            SimpleToken(lex.Identifier("BarType")),
+            SimpleToken(lex.Identifier("bar")),
+            SimpleToken(lex.RightBrace()),
+            SimpleToken(lex.SemiColon()),
+        ]
+    )
+
+    assert parser.parse_struct() == expected_node
 
 
 def test_parse_simple_enum() -> None:
