@@ -33,7 +33,7 @@ module Foo {
     };
 
     typedef int[THREE] three_array;
-    // typedef int[THREE][10] matrix_type;
+    typedef int[THREE][10] matrix_type;
 
     struct SomeStruct {
         int Foo,
@@ -135,8 +135,7 @@ class Printer(parse.NodeVisitor):
         self.dedent()
 
     def visit_struct(self, struct: parse.Struct) -> None:
-        self.print("@dataclass\n class ")
-        self.newline()
+        self.print("@dataclass\nclass ")
         struct.ident.accept(self)
         self.print(":", indent=True)
 
