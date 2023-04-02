@@ -6,9 +6,10 @@ from dataclasses import dataclass
 import enum
 import typing
 from typing import Callable
+from abc import ABC, abstractmethod
 from piss import lex
 from piss.lex import TokenKind
-
+from functools import partial
 
 T = typing.TypeVar("T")
 
@@ -58,39 +59,64 @@ def many(parser: OptionalParserType[T]) -> list[T]:
         Any - Uncaught Exception raised by parser.
     """
 
-    return list(iter(parser, None))
+    items: list[T] = []
+
+    while True:
+        item_or_none = parser()
+
+        if item_or_none is None:
+            break
+
+        items.append(item_or_none)
+
+    return items
 
 
 @dataclass
-class Node:
+class Node(ABC):
     """
     Represents a generic node in a PISS AST.
     """
 
     span: lex.Span
 
+    @abstractmethod
+    def accept(self, visitor: "NodeVisitor") -> None:
+        raise NotImplementedError
+
 
 @dataclass
 class Keyword(Node):
     kind: lex.KeywordKind
+
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_keyword(self)
 
 
 @dataclass
 class Integer(Node):
     value: int
 
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_integer(self)
+
 
 @dataclass
 class Identifier(Node):
     name: str
+
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_identifier(self)
 
 
 @dataclass
 class Expression(Node):
     expr: Identifier | Integer
 
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_expression(self)
 
-@dataclass
+
 class PrimitiveKind(enum.Enum):
     """
     PrimitiveKind enumerates the primitive (builtin) types in PISS grammar.
@@ -110,10 +136,16 @@ class Type(Node):
 class PrimitiveType(Type):
     type: PrimitiveKind
 
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_primitive_type(self)
+
 
 @dataclass
 class IdentifierType(Type):
     type: Identifier
+
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_identifier_type(self)
 
 
 @dataclass
@@ -121,11 +153,17 @@ class ArrayType(Type):
     type: Type
     length: Expression
 
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_array_type(self)
+
 
 @dataclass
 class Field(Node):
     kind: Type
     ident: Identifier
+
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_field(self)
 
 
 @dataclass
@@ -139,11 +177,17 @@ class Const(Definition):
     ident: Identifier
     expr: Expression
 
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_const(self)
+
 
 @dataclass
 class Struct(Definition):
     ident: Identifier
     fields: list[Field]
+
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_struct(self)
 
 
 @dataclass
@@ -151,17 +195,27 @@ class Enum(Definition):
     ident: Identifier
     variants: list[Identifier]
 
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_enum(self)
+
 
 @dataclass
 class Typedef(Definition):
     kind: Type
     ident: Identifier
 
+    def accept(self, visitor: "NodeVisitor") -> None:
+        visitor.visit_typedef(self)
+
 
 @dataclass
 class Module(Definition):
     ident: Identifier
-    defs: list["Definition"]
+    definitions: list["Definition"]
+
+    def accept(self, visitor: "NodeVisitor") -> None:
+        for definition in self.definitions:
+            definition.accept(visitor)
 
 
 GenericNodeT = typing.TypeVar("GenericNodeT", bound=Node)
@@ -494,7 +548,7 @@ class Parser:
             raise UnexpectedEOF
 
         if not isinstance(peeked, kind):
-            raise UnexpectedToken
+            raise UnexpectedToken(f"Got {peeked} expected {kind}")
 
         return typing.cast(lex.Token[lex.GenericTokenKindT], self.next())
 
@@ -573,8 +627,19 @@ class Parser:
             lex.KeywordKind.Int: PrimitiveKind.Int,
         }
 
+        # There is some idiotic lexical scoping behavior in Python that precludes me from using the
+        # same lambda syntax for creating this list of functions as I have else where in the parser.
+        # To get around the weird behavior, I am using functools.partial in order to bind the `kw` argument
+        # for parse_keyword in place of lambda. It took most of a day to figure out WTF was going on here.
+        #
+        # To any readers - be wary of every creating lambdas in a loop that are meant to be called
+        # later.
+        #
+        # Read the explanation in the Python docs here:
+        # https://docs.python.org/3.4/faq/programming.html
+        # #why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
         parsed_keyword = self.choice(
-            [lambda: self.parse_keyword(kw) for kw in primitives_mapping]
+            [partial(self.parse_keyword, kind=kw) for kw in primitives_mapping]
         )
 
         return PrimitiveType(
@@ -800,3 +865,57 @@ class Parser:
         semicolon = self.parse_token(lex.SemiColon)
 
         return Module(module.span + semicolon.span, ident, definitions)
+
+
+class NodeVisitor(ABC):
+    @abstractmethod
+    def visit_keyword(self, keyword: Keyword) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_integer(self, integer: Integer) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_identifier(self, ident: Identifier) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_expression(self, expr: Expression) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_primitive_type(self, type: PrimitiveType) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_identifier_type(self, type: IdentifierType) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_array_type(self, type: ArrayType) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_field(self, field: Field) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_typedef(self, typedef: Typedef) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_const(self, const: Const) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_enum(self, enum: Enum) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_struct(self, struct: Struct) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_module(self, module: Module) -> None:
+        raise NotImplementedError
