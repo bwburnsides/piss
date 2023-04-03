@@ -290,6 +290,15 @@ class UnexpectedToken(ParseError):
     ...
 
 
+class EOF(ParseError):
+    """
+    Signifies that the stream was exhausted at the onset of
+    parsing a top level element.
+    """
+
+    ...
+
+
 class Parser:
     """
     Owns a stream of tokens and parser combinators to operate on it.
@@ -403,7 +412,7 @@ class Parser:
         except UnexpectedEOF:
             clean_up = self.pop
             raise UnexpectedEOF
-        except UnexpectedToken:
+        except (UnexpectedToken, EOF):
             clean_up = self.pop
             return None
         else:
@@ -913,7 +922,7 @@ class Parser:
             ]
         )
 
-    def parse_module(self) -> Module | None:
+    def parse_module(self) -> Module:
         """
         Parse Definition from token stream.
 
@@ -923,14 +932,15 @@ class Parser:
             Module - Parsed Module
 
         Raises:
-            UnexpectedEOF - Stream was exhausted.
+            UnexpectedEOF - Stream was unexpectedly exhausted.
             UnexpectedToken - Tokens could not parse into Module.
+            EOF - Stream is exhausted. A module cannot be parsed.
         """
 
         try:
             module = self.parse_keyword(lex.KeywordKind.Module)
         except UnexpectedEOF:
-            return None
+            raise EOF
 
         ident = self.parse_identifier()
 
