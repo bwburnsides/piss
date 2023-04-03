@@ -74,6 +74,32 @@ def many(parser: OptionalParserType[T]) -> list[T]:
 
 
 def vector(parser: OptionalParserType[T], delimiter: OptionalParserType[U]) -> list[T]:
+    """
+    Parse and collect Ts separated by Us. Tries to parse a T, then tries to parse a U.
+    Collection stops after either a T or U fails to parse.
+
+    Example:
+        Consider stream: T U T U T U ...
+        Returns: [T, T, T]
+
+        Consider stream: T U T U T U T ...
+        Returns: [T, T, T, T]
+
+    Parameters:
+        parser: () -> T | None - Optional T parser. Higher order parsing concludes
+        if parser returns None.
+
+        delimiter: () -> U | None - Optional U parser. Higher order parsing concludes
+        if parser returns None.
+
+    Returns:
+        list[T] - Parsed Ts produced via parser.
+
+    Raises:
+        RecursionError - parser nor delimiter did not return None, causing Stack Overflow.
+        Any - Uncaught Exception raised by parser or delimiter.
+    """
+
     items: list[T] = []
 
     while True:
@@ -83,8 +109,7 @@ def vector(parser: OptionalParserType[T], delimiter: OptionalParserType[U]) -> l
 
         items.append(item_or_none)
 
-        delimiter_or_none = delimiter()
-        if delimiter_or_none is None:
+        if delimiter() is None:
             break
 
     return items
@@ -357,6 +382,20 @@ class Parser:
 
         clean_up: Callable[[], int] | Callable[[], None] = self.drop
 
+        # Because this is an optional parser, the provided parser is allowed to fail.
+        # If it does, then try_parse needs to handle that gracefully by ensuring that
+        # the Parser is in the appropriate state to continue from where it left off.
+        # We do that by saving the current state of the parser to an internal stack.
+        # This state is very simple and is literally just an integer index into the
+        # token stream that the parser owns and the stack is just a normal list that
+        # we append and pop to/from. After we attempt to parse the T, we need to clean
+        # up the stack. If the parser was successful, then we just want to "drop" the
+        # old state off the stack. If the parser was unsuccessful, then any changes
+        # made to the state of the parser by it need to be restored. So we pop the
+        # saved state from the stack into the pointer. So then regardless of the result
+        # we need to clean the stack. We will either drop the old state because its
+        # not needed, or we pop the old state to revert to it.
+
         self.push()
 
         try:
@@ -440,7 +479,9 @@ class Parser:
 
             return True
 
-        return self.try_parse(lambda: self.then_check(parser, check=check_terminator))
+        return self.try_parse(
+            lambda: self.then_check(parser=parser, check=check_terminator)
+        )
 
     def either_or(
         self,
@@ -478,10 +519,12 @@ class Parser:
         # of whichever one succeeds first, and will raise an Exception if parsing fails. In the case of either_or, the set of parsers
         # to choose from is strictly two. We implement either_or by constructing a list from the parser parameters, then passing it
         # to choice to take care of.
+
         choices: list[ParserType[GenericNodeT | GenericNodeU]] = [
             first_choice,
             second_choice,
         ]
+
         return self.choice(choices)
 
     def between(
@@ -636,7 +679,9 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Expression.
         """
 
-        ident_or_int = self.either_or(self.parse_identifier, self.parse_integer)
+        ident_or_int = self.either_or(
+            first_choice=self.parse_identifier, second_choice=self.parse_integer
+        )
         return Expression(ident_or_int.span, ident_or_int)
 
     def parse_primitive_type(self) -> PrimitiveType:
@@ -656,9 +701,11 @@ class Parser:
         # Read the explanation in the Python docs here:
         # https://docs.python.org/3.4/faq/programming.html
         # #why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
-        parsed_keyword = self.choice(
-            [partial(self.parse_keyword, kind=kw) for kw in primitives_mapping]
-        )
+
+        primitive_type_parsers: list[Callable[[], Keyword]] = [
+            partial(self.parse_keyword, kind=kw) for kw in primitives_mapping
+        ]
+        parsed_keyword = self.choice(primitive_type_parsers)
 
         return PrimitiveType(
             parsed_keyword.span, primitives_mapping[parsed_keyword.kind]
@@ -684,20 +731,23 @@ class Parser:
         """
 
         parsed_type: Type = self.either_or(
-            self.parse_primitive_type,
-            self.parse_identifier_type,
+            first_choice=self.parse_primitive_type,
+            second_choice=self.parse_identifier_type,
         )
 
         def parse_bounds() -> tuple[Expression, lex.Span]:
             _before, right_bracket, expr = self.between(
-                lex.LeftBracket, lex.RightBracket, self.parse_expression
+                before=lex.LeftBracket,
+                after=lex.RightBracket,
+                parser=self.parse_expression,
             )
 
             return expr, right_bracket.span
 
         exprs_and_spans = many(
             lambda: parse_if(
-                parse_bounds, lambda: isinstance(self.peek(), lex.LeftBracket)
+                parser=parse_bounds,
+                predicate=lambda: isinstance(self.peek(), lex.LeftBracket),
             )
         )
 
@@ -774,11 +824,11 @@ class Parser:
         ident = self.parse_identifier()
 
         _before, _after, fields = self.between(
-            lex.LeftBrace,
-            lex.RightBrace,
-            lambda: vector(
-                lambda: self.try_parse(self.parse_field),
-                lambda: self.try_parse(lambda: self.parse_token(lex.Comma)),
+            before=lex.LeftBrace,
+            after=lex.RightBrace,
+            parser=lambda: vector(
+                parser=lambda: self.try_parse(self.parse_field),
+                delimiter=lambda: self.try_parse(lambda: self.parse_token(lex.Comma)),
             ),
         )
 
@@ -804,11 +854,11 @@ class Parser:
         ident = self.parse_identifier()
 
         _before, _after, variants = self.between(
-            lex.LeftBrace,
-            lex.RightBrace,
-            lambda: vector(
-                lambda: self.try_parse(self.parse_identifier),
-                lambda: self.try_parse(lambda: self.parse_token(lex.Comma)),
+            before=lex.LeftBrace,
+            after=lex.RightBrace,
+            parser=lambda: vector(
+                parser=lambda: self.try_parse(self.parse_identifier),
+                delimiter=lambda: self.try_parse(lambda: self.parse_token(lex.Comma)),
             ),
         )
 
@@ -863,7 +913,7 @@ class Parser:
             ]
         )
 
-    def parse_module(self) -> Module:
+    def parse_module(self) -> Module | None:
         """
         Parse Definition from token stream.
 
@@ -877,7 +927,11 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Module.
         """
 
-        module = self.parse_keyword(lex.KeywordKind.Module)
+        try:
+            module = self.parse_keyword(lex.KeywordKind.Module)
+        except UnexpectedEOF:
+            return None
+
         ident = self.parse_identifier()
 
         _before, _after, definitions = self.between(
@@ -891,7 +945,22 @@ class Parser:
         return Module(module.span + semicolon.span, ident, definitions)
 
 
+def parse(tokens: list[lex.Token[TokenKind]]) -> list[Module]:
+    parser = Parser(tokens)
+
+    return many(parser=lambda: parser.try_parse(parser.parse_module))
+
+
 class NodeVisitor(ABC):
+    """
+    Abstract Visitor base for parse.Node visitors. Implementors of this class can use
+    it in order to visit all Nodes in a given tree. For example, a PrinterVisitor can
+    be written in order to print all nodes in a given tree. Users of a NodeVisitor
+    implementation can use NodeVisitor().<visit_method>(Node) in order to recursively
+    visit the nodes on tree Node using the appropriate visit method. Implementors
+    of Node should use node.accept(self) in order to dispatch to the correct visit method.
+    """
+
     @abstractmethod
     def visit_keyword(self, keyword: Keyword) -> None:
         raise NotImplementedError

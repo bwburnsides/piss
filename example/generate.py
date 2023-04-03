@@ -1,4 +1,5 @@
-from piss import lex, parse
+from piss import lex
+from piss import parse
 import typing
 
 T = typing.TypeVar("T")
@@ -41,6 +42,8 @@ module Foo {
         uint Baz
     };
 };
+
+// module Bar {};
 """
 
 
@@ -61,7 +64,7 @@ class Printer(parse.NodeVisitor):
             self.indent()
 
         for line in lines:
-            self.output += "\n" + ("    " * self.indent_level)
+            self.output += "\n" + self.indentation()
             self.output += line
 
     def indent(self) -> None:
@@ -72,8 +75,11 @@ class Printer(parse.NodeVisitor):
         self.indent_level -= 1
         self.newline()
 
+    def indentation(self) -> str:
+        return "    " * self.indent_level
+
     def newline(self) -> None:
-        self.output += "\n" + ("    " * self.indent_level)
+        self.output += "\n" + self.indentation()
 
     def visit_keyword(self, keyword: parse.Keyword) -> None:
         ...
@@ -149,12 +155,11 @@ class Printer(parse.NodeVisitor):
         module.accept(self)
 
 
-def emit_module(module: parse.Module) -> None:
-    printer = Printer()
-    module.accept(printer)
-    print(printer.output)
+def main() -> None:
+    tokens = lex.tokenize(sample)
+    modules = parse.parse(tokens)
+    print(len(modules))
 
 
-tokens = lex.tokenize(sample)
-module = parse.Parser(tokens).parse_module()
-emit_module(module)
+if __name__ == "__main__":
+    main()
