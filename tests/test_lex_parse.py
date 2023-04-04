@@ -1,5 +1,4 @@
-from piss import lex
-from piss import parse
+from piss import lex, node
 from piss.lex import KeywordKind, Span
 from piss.parse import Parser
 from textwrap import dedent
@@ -34,7 +33,7 @@ def test_parse_keyword() -> None:
     tokens = lex.tokenize(input)
     parser = Parser(tokens)
 
-    assert parser.parse_keyword(KeywordKind.Struct) == parse.Keyword(
+    assert parser.parse_keyword(KeywordKind.Struct) == node.Keyword(
         Span(0, 6), KeywordKind.Struct
     )
 
@@ -45,7 +44,7 @@ def test_parse_second_keyword() -> None:
     parser = Parser(tokens)
     parser.parse_token(lex.SemiColon)
 
-    assert parser.parse_keyword(KeywordKind.Module) == parse.Keyword(
+    assert parser.parse_keyword(KeywordKind.Module) == node.Keyword(
         Span(2, 8),
         KeywordKind.Module,
     )
@@ -54,15 +53,15 @@ def test_parse_second_keyword() -> None:
 def test_parse_type_int() -> None:
     uint = Parser(lex.tokenize("int")).parse_type()
 
-    assert isinstance(uint, parse.PrimitiveType)
-    assert uint.type == parse.PrimitiveKind.Int
+    assert isinstance(uint, node.PrimitiveType)
+    assert uint.type == node.PrimitiveKind.Int
 
 
 def test_parse_type_uint() -> None:
     uint = Parser(lex.tokenize("uint")).parse_type()
 
-    assert isinstance(uint, parse.PrimitiveType)
-    assert uint.type == parse.PrimitiveKind.Uint
+    assert isinstance(uint, node.PrimitiveType)
+    assert uint.type == node.PrimitiveKind.Uint
 
 
 def test_parse_field_int() -> None:
@@ -70,8 +69,8 @@ def test_parse_field_int() -> None:
     field = Parser(tokens).parse_field()
 
     assert field.ident.name == "MyInt"
-    assert isinstance(field.kind, parse.PrimitiveType)
-    assert field.kind.type == parse.PrimitiveKind.Int
+    assert isinstance(field.kind, node.PrimitiveType)
+    assert field.kind.type == node.PrimitiveKind.Int
 
 
 def test_parse_field_uint() -> None:
@@ -79,8 +78,8 @@ def test_parse_field_uint() -> None:
     field = Parser(tokens).parse_field()
 
     assert field.ident.name == "MyUint"
-    assert isinstance(field.kind, parse.PrimitiveType)
-    assert field.kind.type == parse.PrimitiveKind.Uint
+    assert isinstance(field.kind, node.PrimitiveType)
+    assert field.kind.type == node.PrimitiveKind.Uint
 
 
 def test_parse_const_primitive_integer() -> None:
@@ -90,10 +89,10 @@ def test_parse_const_primitive_integer() -> None:
     # For now, ignore Span checks
     assert const.ident.name == "TRIANGLE_SIDES"
 
-    assert isinstance(const.kind, parse.PrimitiveType)
-    assert const.kind.type == parse.PrimitiveKind.Int
+    assert isinstance(const.kind, node.PrimitiveType)
+    assert const.kind.type == node.PrimitiveKind.Int
 
-    assert isinstance(const.expr.expr, parse.Integer)
+    assert isinstance(const.expr.expr, node.Integer)
     assert const.expr.expr.value == 3
 
 
@@ -104,10 +103,10 @@ def test_parse_const_primitive_identifier() -> None:
     # For now, ignore Span checks
     assert const.ident.name == "TRIANGLE_SIDES"
 
-    assert isinstance(const.kind, parse.PrimitiveType)
-    assert const.kind.type == parse.PrimitiveKind.Int
+    assert isinstance(const.kind, node.PrimitiveType)
+    assert const.kind.type == node.PrimitiveKind.Int
 
-    assert isinstance(const.expr.expr, parse.Identifier)
+    assert isinstance(const.expr.expr, node.Identifier)
     assert const.expr.expr.name == "THREE"
 
 
@@ -118,10 +117,10 @@ def test_parse_const_identifier_integer() -> None:
     # For now, ignore Span checks
     assert const.ident.name == "MyValue"
 
-    assert isinstance(const.kind, parse.IdentifierType)
+    assert isinstance(const.kind, node.IdentifierType)
     assert const.kind.type.name == "MyInt"
 
-    assert isinstance(const.expr.expr, parse.Integer)
+    assert isinstance(const.expr.expr, node.Integer)
     assert const.expr.expr.value == 3
 
 
@@ -132,10 +131,10 @@ def test_parse_const_identifier_identifier() -> None:
     # For now, ignore Span checks
     assert const.ident.name == "MyValue"
 
-    assert isinstance(const.kind, parse.IdentifierType)
+    assert isinstance(const.kind, node.IdentifierType)
     assert const.kind.type.name == "MyInt"
 
-    assert isinstance(const.expr.expr, parse.Identifier)
+    assert isinstance(const.expr.expr, node.Identifier)
     assert const.expr.expr.name == "SOME_ALIAS"
 
 
@@ -161,12 +160,12 @@ def test_parse_struct() -> None:
 
     assert struct.fields[0].ident.name == "kind"
 
-    assert isinstance(struct.fields[0].kind, parse.IdentifierType)
+    assert isinstance(struct.fields[0].kind, node.IdentifierType)
     assert struct.fields[0].kind.type.name == "TokenKind"
 
     assert struct.fields[1].ident.name == "span"
 
-    assert isinstance(struct.fields[1].kind, parse.IdentifierType)
+    assert isinstance(struct.fields[1].kind, node.IdentifierType)
     assert struct.fields[1].kind.type.name == "Span"
 
 

@@ -1,5 +1,4 @@
-from piss import lex
-from piss import parse
+from piss import lex, node, parse
 import typing
 
 T = typing.TypeVar("T")
@@ -47,7 +46,7 @@ module Foo {
 """
 
 
-class Printer(parse.NodeVisitor):
+class Printer(node.NodeVisitor):
     def __init__(self) -> None:
         self.indent_level = 0
         self.output = ""
@@ -81,35 +80,35 @@ class Printer(parse.NodeVisitor):
     def newline(self) -> None:
         self.output += "\n" + self.indentation()
 
-    def visit_keyword(self, keyword: parse.Keyword) -> None:
+    def visit_keyword(self, keyword: node.Keyword) -> None:
         ...
 
-    def visit_integer(self, integer: parse.Integer) -> None:
+    def visit_integer(self, integer: node.Integer) -> None:
         self.print(str(integer.value))
 
-    def visit_identifier(self, ident: parse.Identifier) -> None:
+    def visit_identifier(self, ident: node.Identifier) -> None:
         self.print(ident.name)
 
-    def visit_expression(self, expr: parse.Expression) -> None:
+    def visit_expression(self, expr: node.Expression) -> None:
         expr.expr.accept(self)
 
-    def visit_primitive_type(self, type: parse.PrimitiveType) -> None:
+    def visit_primitive_type(self, type: node.PrimitiveType) -> None:
         self.print(type.type.name)
 
-    def visit_identifier_type(self, type: parse.IdentifierType) -> None:
+    def visit_identifier_type(self, type: node.IdentifierType) -> None:
         self.print(type.type.name)
 
-    def visit_array_type(self, type: parse.ArrayType) -> None:
+    def visit_array_type(self, type: node.ArrayType) -> None:
         self.print("list[")
         type.type.accept(self)
         self.print("]")
 
-    def visit_field(self, field: parse.Field) -> None:
+    def visit_field(self, field: node.Field) -> None:
         field.ident.accept(self)
         self.print(": ")
         field.kind.accept(self)
 
-    def visit_typedef(self, typedef: parse.Typedef) -> None:
+    def visit_typedef(self, typedef: node.Typedef) -> None:
         typedef.ident.accept(self)
         self.print(' = typing.NewType("')
         typedef.ident.accept(self)
@@ -119,7 +118,7 @@ class Printer(parse.NodeVisitor):
         self.newline()
         self.newline()
 
-    def visit_const(self, const: parse.Const) -> None:
+    def visit_const(self, const: node.Const) -> None:
         const.ident.accept(self)
         self.print(": ")
         const.kind.accept(self)
@@ -128,7 +127,7 @@ class Printer(parse.NodeVisitor):
         self.newline()
         self.newline()
 
-    def visit_enum(self, enum: parse.Enum) -> None:
+    def visit_enum(self, enum: node.Enum) -> None:
         self.print("class ")
         enum.ident.accept(self)
         self.print("(enum.Enum):", indent=True)
@@ -140,7 +139,7 @@ class Printer(parse.NodeVisitor):
 
         self.dedent()
 
-    def visit_struct(self, struct: parse.Struct) -> None:
+    def visit_struct(self, struct: node.Struct) -> None:
         self.print("@dataclass\nclass ")
         struct.ident.accept(self)
         self.print(":", indent=True)
@@ -151,7 +150,7 @@ class Printer(parse.NodeVisitor):
 
         self.dedent()
 
-    def visit_module(self, module: parse.Module) -> None:
+    def visit_module(self, module: node.Module) -> None:
         module.accept(self)
 
 

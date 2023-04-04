@@ -2,14 +2,13 @@
 Tools for parsing the PISS grammar.
 """
 
-from dataclasses import dataclass
-import enum
 import typing
 from typing import Callable
-from abc import ABC, abstractmethod
 from piss import lex
 from piss.lex import TokenKind
 from functools import partial
+
+from piss import node
 
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
@@ -115,154 +114,8 @@ def vector(parser: OptionalParserType[T], delimiter: OptionalParserType[U]) -> l
     return items
 
 
-@dataclass
-class Node(ABC):
-    """
-    Represents a generic node in a PISS AST.
-    """
-
-    span: lex.Span
-
-    @abstractmethod
-    def accept(self, visitor: "NodeVisitor") -> None:
-        raise NotImplementedError
-
-
-@dataclass
-class Keyword(Node):
-    kind: lex.KeywordKind
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_keyword(self)
-
-
-@dataclass
-class Integer(Node):
-    value: int
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_integer(self)
-
-
-@dataclass
-class Identifier(Node):
-    name: str
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_identifier(self)
-
-
-@dataclass
-class Expression(Node):
-    expr: Identifier | Integer
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_expression(self)
-
-
-class PrimitiveKind(enum.Enum):
-    """
-    PrimitiveKind enumerates the primitive (builtin) types in PISS grammar.
-    These are represented by Keyword tokens.
-    """
-
-    Uint = enum.auto()
-    Int = enum.auto()
-
-
-@dataclass
-class Type(Node):
-    ...
-
-
-@dataclass
-class PrimitiveType(Type):
-    type: PrimitiveKind
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_primitive_type(self)
-
-
-@dataclass
-class IdentifierType(Type):
-    type: Identifier
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_identifier_type(self)
-
-
-@dataclass
-class ArrayType(Type):
-    type: Type
-    length: Expression
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_array_type(self)
-
-
-@dataclass
-class Field(Node):
-    kind: Type
-    ident: Identifier
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_field(self)
-
-
-@dataclass
-class Definition(Node):
-    ...
-
-
-@dataclass
-class Const(Definition):
-    kind: Identifier | Type
-    ident: Identifier
-    expr: Expression
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_const(self)
-
-
-@dataclass
-class Struct(Definition):
-    ident: Identifier
-    fields: list[Field]
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_struct(self)
-
-
-@dataclass
-class Enum(Definition):
-    ident: Identifier
-    variants: list[Identifier]
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_enum(self)
-
-
-@dataclass
-class Typedef(Definition):
-    kind: Type
-    ident: Identifier
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        visitor.visit_typedef(self)
-
-
-@dataclass
-class Module(Definition):
-    ident: Identifier
-    definitions: list["Definition"]
-
-    def accept(self, visitor: "NodeVisitor") -> None:
-        for definition in self.definitions:
-            definition.accept(visitor)
-
-
-GenericNodeT = typing.TypeVar("GenericNodeT", bound=Node)
-GenericNodeU = typing.TypeVar("GenericNodeU", bound=Node)
+GenericNodeT = typing.TypeVar("GenericNodeT", bound=node.Node)
+GenericNodeU = typing.TypeVar("GenericNodeU", bound=node.Node)
 
 
 class ParseError(ValueError):
@@ -622,7 +475,7 @@ class Parser:
 
         return typing.cast(lex.Token[lex.GenericTokenKindT], self.next())
 
-    def parse_keyword(self, kind: lex.KeywordKind) -> Keyword:
+    def parse_keyword(self, kind: lex.KeywordKind) -> node.Keyword:
         """
         Parse Keyword given kind from token stream.
 
@@ -642,9 +495,9 @@ class Parser:
             check=lambda token: token.kind.keyword is kind,
         )
 
-        return Keyword(token.span, token.kind.keyword)
+        return node.Keyword(token.span, token.kind.keyword)
 
-    def parse_identifier(self) -> Identifier:
+    def parse_identifier(self) -> node.Identifier:
         """
         Parse Identifier from token stream.
 
@@ -657,9 +510,9 @@ class Parser:
         """
 
         token = self.parse_token(lex.Identifier)
-        return Identifier(token.span, token.kind.name)
+        return node.Identifier(token.span, token.kind.name)
 
-    def parse_integer(self) -> Integer:
+    def parse_integer(self) -> node.Integer:
         """
         Parse Integer from token stream.
 
@@ -672,9 +525,9 @@ class Parser:
         """
 
         token = self.parse_token(lex.Integer)
-        return Integer(token.span, token.kind.value)
+        return node.Integer(token.span, token.kind.value)
 
-    def parse_expression(self) -> Expression:
+    def parse_expression(self) -> node.Expression:
         """
         Parse Expression from token stream.
 
@@ -691,12 +544,12 @@ class Parser:
         ident_or_int = self.either_or(
             first_choice=self.parse_identifier, second_choice=self.parse_integer
         )
-        return Expression(ident_or_int.span, ident_or_int)
+        return node.Expression(ident_or_int.span, ident_or_int)
 
-    def parse_primitive_type(self) -> PrimitiveType:
-        primitives_mapping: dict[lex.KeywordKind, PrimitiveKind] = {
-            lex.KeywordKind.Uint: PrimitiveKind.Uint,
-            lex.KeywordKind.Int: PrimitiveKind.Int,
+    def parse_primitive_type(self) -> node.PrimitiveType:
+        primitives_mapping: dict[lex.KeywordKind, node.PrimitiveKind] = {
+            lex.KeywordKind.Uint: node.PrimitiveKind.Uint,
+            lex.KeywordKind.Int: node.PrimitiveKind.Int,
         }
 
         # There is some idiotic lexical scoping behavior in Python that precludes me from using the
@@ -711,20 +564,20 @@ class Parser:
         # https://docs.python.org/3.4/faq/programming.html
         # #why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result
 
-        primitive_type_parsers: list[Callable[[], Keyword]] = [
+        primitive_type_parsers: list[Callable[[], node.Keyword]] = [
             partial(self.parse_keyword, kind=kw) for kw in primitives_mapping
         ]
         parsed_keyword = self.choice(primitive_type_parsers)
 
-        return PrimitiveType(
+        return node.PrimitiveType(
             parsed_keyword.span, primitives_mapping[parsed_keyword.kind]
         )
 
-    def parse_identifier_type(self) -> IdentifierType:
+    def parse_identifier_type(self) -> node.IdentifierType:
         ident = self.parse_identifier()
-        return IdentifierType(ident.span, ident)
+        return node.IdentifierType(ident.span, ident)
 
-    def parse_type(self) -> Type:
+    def parse_type(self) -> node.Type:
         """
         Parse Type from token stream.
 
@@ -739,12 +592,12 @@ class Parser:
             UnexpectedToken - Tokens could not parse into Type.
         """
 
-        parsed_type: Type = self.either_or(
+        parsed_type: node.Type = self.either_or(
             first_choice=self.parse_primitive_type,
             second_choice=self.parse_identifier_type,
         )
 
-        def parse_bounds() -> tuple[Expression, lex.Span]:
+        def parse_bounds() -> tuple[node.Expression, lex.Span]:
             _before, right_bracket, expr = self.between(
                 before=lex.LeftBracket,
                 after=lex.RightBracket,
@@ -763,7 +616,7 @@ class Parser:
         start_span = parsed_type.span
 
         for expr, span in exprs_and_spans:
-            parsed_type = ArrayType(
+            parsed_type = node.ArrayType(
                 start_span + span,
                 parsed_type,
                 expr,
@@ -771,7 +624,7 @@ class Parser:
 
         return parsed_type
 
-    def parse_field(self) -> Field:
+    def parse_field(self) -> node.Field:
         """
         Parse Field from token stream.
 
@@ -788,9 +641,9 @@ class Parser:
         type = self.parse_type()
         ident = self.parse_identifier()
 
-        return Field(type.span + ident.span, type, ident)
+        return node.Field(type.span + ident.span, type, ident)
 
-    def parse_const(self) -> Const:
+    def parse_const(self) -> node.Const:
         """
         Parse Const from token stream.
 
@@ -813,9 +666,9 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return Const(const.span + semicolon.span, field.kind, field.ident, expr)
+        return node.Const(const.span + semicolon.span, field.kind, field.ident, expr)
 
-    def parse_struct(self) -> Struct:
+    def parse_struct(self) -> node.Struct:
         """
         Parse Struct from token stream.
 
@@ -843,9 +696,9 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return Struct(struct.span + semicolon.span, ident, fields)
+        return node.Struct(struct.span + semicolon.span, ident, fields)
 
-    def parse_enum(self) -> Enum:
+    def parse_enum(self) -> node.Enum:
         """
         Parse Enum from token stream.
 
@@ -873,9 +726,9 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return Enum(enum.span + semicolon.span, ident, variants)
+        return node.Enum(enum.span + semicolon.span, ident, variants)
 
-    def parse_typedef(self) -> Typedef:
+    def parse_typedef(self) -> node.Typedef:
         """
         Parse Typedef from token stream.
 
@@ -894,9 +747,9 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return Typedef(typedef.span + semicolon.span, field.kind, field.ident)
+        return node.Typedef(typedef.span + semicolon.span, field.kind, field.ident)
 
-    def parse_definition(self) -> Definition:
+    def parse_definition(self) -> node.Definition:
         """
         Parse Definition from token stream.
 
@@ -922,7 +775,7 @@ class Parser:
             ]
         )
 
-    def parse_module(self) -> Module:
+    def parse_module(self) -> node.Module:
         """
         Parse Definition from token stream.
 
@@ -952,73 +805,10 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return Module(module.span + semicolon.span, ident, definitions)
+        return node.Module(module.span + semicolon.span, ident, definitions)
 
 
-def parse(tokens: list[lex.Token[TokenKind]]) -> list[Module]:
+def parse(tokens: list[lex.Token[TokenKind]]) -> list[node.Module]:
     parser = Parser(tokens)
 
     return many(parser=lambda: parser.try_parse(parser.parse_module))
-
-
-class NodeVisitor(ABC):
-    """
-    Abstract Visitor base for parse.Node visitors. Implementors of this class can use
-    it in order to visit all Nodes in a given tree. For example, a PrinterVisitor can
-    be written in order to print all nodes in a given tree. Users of a NodeVisitor
-    implementation can use NodeVisitor().<visit_method>(Node) in order to recursively
-    visit the nodes on tree Node using the appropriate visit method. Implementors
-    of Node should use node.accept(self) in order to dispatch to the correct visit method.
-    """
-
-    @abstractmethod
-    def visit_keyword(self, keyword: Keyword) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_integer(self, integer: Integer) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_identifier(self, ident: Identifier) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_expression(self, expr: Expression) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_primitive_type(self, type: PrimitiveType) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_identifier_type(self, type: IdentifierType) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_array_type(self, type: ArrayType) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_field(self, field: Field) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_typedef(self, typedef: Typedef) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_const(self, const: Const) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_enum(self, enum: Enum) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_struct(self, struct: Struct) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_module(self, module: Module) -> None:
-        raise NotImplementedError
