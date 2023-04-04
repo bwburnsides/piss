@@ -4,11 +4,10 @@ Tools for parsing the PISS grammar.
 
 import typing
 from typing import Callable
-from piss import lex
-from piss.lex import TokenKind
 from functools import partial
 
-from piss import node
+from piss import lex, node
+from piss.lex import TokenKind
 
 T = typing.TypeVar("T")
 U = typing.TypeVar("U")
@@ -495,7 +494,7 @@ class Parser:
             check=lambda token: token.kind.keyword is kind,
         )
 
-        return node.Keyword(token.span, token.kind.keyword)
+        return node.Keyword(span=token.span, kind=token.kind.keyword)
 
     def parse_identifier(self) -> node.Identifier:
         """
@@ -510,7 +509,7 @@ class Parser:
         """
 
         token = self.parse_token(lex.Identifier)
-        return node.Identifier(token.span, token.kind.name)
+        return node.Identifier(span=token.span, name=token.kind.name)
 
     def parse_integer(self) -> node.Integer:
         """
@@ -525,7 +524,7 @@ class Parser:
         """
 
         token = self.parse_token(lex.Integer)
-        return node.Integer(token.span, token.kind.value)
+        return node.Integer(span=token.span, value=token.kind.value)
 
     def parse_expression(self) -> node.Expression:
         """
@@ -544,7 +543,7 @@ class Parser:
         ident_or_int = self.either_or(
             first_choice=self.parse_identifier, second_choice=self.parse_integer
         )
-        return node.Expression(ident_or_int.span, ident_or_int)
+        return node.Expression(span=ident_or_int.span, expr=ident_or_int)
 
     def parse_primitive_type(self) -> node.PrimitiveType:
         primitives_mapping: dict[lex.KeywordKind, node.PrimitiveKind] = {
@@ -570,12 +569,12 @@ class Parser:
         parsed_keyword = self.choice(primitive_type_parsers)
 
         return node.PrimitiveType(
-            parsed_keyword.span, primitives_mapping[parsed_keyword.kind]
+            span=parsed_keyword.span, type=primitives_mapping[parsed_keyword.kind]
         )
 
     def parse_identifier_type(self) -> node.IdentifierType:
         ident = self.parse_identifier()
-        return node.IdentifierType(ident.span, ident)
+        return node.IdentifierType(span=ident.span, type=ident)
 
     def parse_type(self) -> node.Type:
         """
@@ -617,9 +616,9 @@ class Parser:
 
         for expr, span in exprs_and_spans:
             parsed_type = node.ArrayType(
-                start_span + span,
-                parsed_type,
-                expr,
+                span=start_span + span,
+                type=parsed_type,
+                length=expr,
             )
 
         return parsed_type
@@ -641,7 +640,7 @@ class Parser:
         type = self.parse_type()
         ident = self.parse_identifier()
 
-        return node.Field(type.span + ident.span, type, ident)
+        return node.Field(span=type.span + ident.span, kind=type, ident=ident)
 
     def parse_const(self) -> node.Const:
         """
@@ -666,7 +665,12 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return node.Const(const.span + semicolon.span, field.kind, field.ident, expr)
+        return node.Const(
+            span=const.span + semicolon.span,
+            ident=field.ident,
+            kind=field.kind,
+            expr=expr,
+        )
 
     def parse_struct(self) -> node.Struct:
         """
@@ -696,7 +700,9 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return node.Struct(struct.span + semicolon.span, ident, fields)
+        return node.Struct(
+            span=struct.span + semicolon.span, ident=ident, fields=fields
+        )
 
     def parse_enum(self) -> node.Enum:
         """
@@ -726,7 +732,9 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return node.Enum(enum.span + semicolon.span, ident, variants)
+        return node.Enum(
+            span=enum.span + semicolon.span, ident=ident, variants=variants
+        )
 
     def parse_typedef(self) -> node.Typedef:
         """
@@ -747,7 +755,9 @@ class Parser:
 
         semicolon = self.parse_token(lex.SemiColon)
 
-        return node.Typedef(typedef.span + semicolon.span, field.kind, field.ident)
+        return node.Typedef(
+            span=typedef.span + semicolon.span, ident=field.ident, kind=field.kind
+        )
 
     def parse_definition(self) -> node.Definition:
         """

@@ -3,9 +3,10 @@ Tests for functions in lex.py.
 """
 
 import pytest
-from piss import lex
 from textwrap import dedent
 from typing import Type
+
+from piss import lex
 
 
 @pytest.mark.parametrize(

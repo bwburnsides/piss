@@ -3,13 +3,12 @@ Tests for functions in parse.py
 """
 
 import pytest
-from piss import node
-import piss.parse as parse
-from piss.parse import Parser
-import piss.lex as lex
-from piss.lex import KeywordKind, Span
 from typing import Callable, NamedTuple
 from functools import partial
+
+from piss import lex, node, parse
+from piss.parse import Parser
+from piss.lex import KeywordKind, Span
 
 SimpleToken: Callable[[lex.TokenKind], lex.Token[lex.TokenKind]] = partial(
     lex.Token[lex.TokenKind], span=Span()
@@ -101,8 +100,8 @@ PrimitiveTypedefFixtureType: Callable[
 def primitive_typedef() -> PrimitiveTypedefType:
     typedef = node.Typedef(
         Span(),
-        node.PrimitiveType(Span(), node.PrimitiveKind.Int),
         node.Identifier(Span(), "FooType"),
+        node.PrimitiveType(Span(), node.PrimitiveKind.Int),
     )
 
     tokens = [
@@ -443,8 +442,8 @@ def test_parse_const(simple_field_foo: SimpleFieldType) -> None:
 
     expected_node = node.Const(
         Span(),
-        simple_field_foo.node.kind,
         simple_field_foo.node.ident,
+        simple_field_foo.node.kind,
         node.Expression(
             Span(),
             node.Integer(Span(), expr.kind.value),
@@ -715,8 +714,8 @@ def test_parse_typedef_with_ident_type() -> None:
 
     expected_node = node.Typedef(
         Span(),
-        node.IdentifierType(Span(), node.Identifier(Span(), "FooType")),
         node.Identifier(Span(), "BarType"),
+        node.IdentifierType(Span(), node.Identifier(Span(), "FooType")),
     )
 
     parser = Parser(

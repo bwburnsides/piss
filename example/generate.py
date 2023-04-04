@@ -1,5 +1,6 @@
-from piss import lex, node, parse
 import typing
+
+from piss import lex, node, parse
 
 T = typing.TypeVar("T")
 
@@ -46,6 +47,10 @@ module Foo {
 """
 
 
+class CodeGenerationError(ValueError):
+    ...
+
+
 class Printer(node.NodeVisitor):
     def __init__(self) -> None:
         self.indent_level = 0
@@ -81,7 +86,7 @@ class Printer(node.NodeVisitor):
         self.output += "\n" + self.indentation()
 
     def visit_keyword(self, keyword: node.Keyword) -> None:
-        ...
+        raise CodeGenerationError
 
     def visit_integer(self, integer: node.Integer) -> None:
         self.print(str(integer.value))
@@ -151,7 +156,7 @@ class Printer(node.NodeVisitor):
         self.dedent()
 
     def visit_module(self, module: node.Module) -> None:
-        module.accept(self)
+        raise CodeGenerationError
 
 
 def main() -> None:

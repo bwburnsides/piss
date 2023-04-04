@@ -101,13 +101,12 @@ class Field(Node):
 
 @dataclass
 class Definition(Node):
-    ...
+    ident: Identifier
 
 
 @dataclass
 class Const(Definition):
-    kind: Identifier | Type
-    ident: Identifier
+    kind: Type
     expr: Expression
 
     def accept(self, visitor: "NodeVisitor") -> None:
@@ -116,7 +115,6 @@ class Const(Definition):
 
 @dataclass
 class Struct(Definition):
-    ident: Identifier
     fields: list[Field]
 
     def accept(self, visitor: "NodeVisitor") -> None:
@@ -125,7 +123,6 @@ class Struct(Definition):
 
 @dataclass
 class Enum(Definition):
-    ident: Identifier
     variants: list[Identifier]
 
     def accept(self, visitor: "NodeVisitor") -> None:
@@ -135,7 +132,6 @@ class Enum(Definition):
 @dataclass
 class Typedef(Definition):
     kind: Type
-    ident: Identifier
 
     def accept(self, visitor: "NodeVisitor") -> None:
         visitor.visit_typedef(self)
@@ -155,10 +151,12 @@ class NodeVisitor(ABC):
     """
     Abstract Visitor base for parse.Node visitors. Implementors of this class can use
     it in order to visit all Nodes in a given tree. For example, a PrinterVisitor can
-    be written in order to print all nodes in a given tree. Users of a NodeVisitor
-    implementation can use NodeVisitor().<visit_method>(Node) in order to recursively
-    visit the nodes on tree Node using the appropriate visit method. Implementors
-    of Node should use node.accept(self) in order to dispatch to the correct visit method.
+    be written in order to print all nodes in a given tree. Usage should look like this:
+
+    visitor: NodeVisitor = ...
+    node: Node = ...
+
+    node.accept(visitor)
     """
 
     @abstractmethod
