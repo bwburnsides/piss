@@ -1,4 +1,6 @@
 import typing
+import textwrap
+from functools import partial
 
 from piss import lex, node, parse
 
@@ -51,118 +53,98 @@ class CodeGenerationError(ValueError):
     ...
 
 
-class Printer(node.NodeVisitor):
-    def __init__(self) -> None:
-        self.indent_level = 0
-        self.output = ""
+class Printer(node.NodeVisitor[str]):
+    indent = partial(textwrap.indent, prefix=" " * 4)
 
-    def print(self, value: str, indent: bool = False) -> None:
-        lines = value.split("\n")
-
-        if len(lines) > 0:
-            self.output += lines[0]
-
-        lines = lines[1:]
-
-        if indent:
-            self.indent()
-
-        for line in lines:
-            self.output += "\n" + self.indentation()
-            self.output += line
-
-    def indent(self) -> None:
-        self.indent_level += 1
-        self.newline()
-
-    def dedent(self) -> None:
-        self.indent_level -= 1
-        self.newline()
-
-    def indentation(self) -> str:
-        return "    " * self.indent_level
-
-    def newline(self) -> None:
-        self.output += "\n" + self.indentation()
-
-    def visit_keyword(self, keyword: node.Keyword) -> None:
+    def visit_keyword(self, keyword: node.Keyword) -> str:
         raise CodeGenerationError
 
-    def visit_integer(self, integer: node.Integer) -> None:
-        self.print(str(integer.value))
+    def visit_integer(self, integer: node.Integer) -> str:
+        return str(integer.value)
 
-    def visit_identifier(self, ident: node.Identifier) -> None:
-        self.print(ident.name)
+    def visit_identifier(self, ident: node.Identifier) -> str:
+        return ident.name
 
-    def visit_expression(self, expr: node.Expression) -> None:
-        expr.expr.accept(self)
+    def visit_expression(self, expr: node.Expression) -> str:
+        return expr.expr.accept(self)
 
-    def visit_primitive_type(self, type: node.PrimitiveType) -> None:
-        self.print(type.type.name)
+    def visit_primitive_type(self, type: node.PrimitiveType) -> str:
+        repr_table = {
+            node.PrimitiveKind.Uint: "int",
+            node.PrimitiveKind.Int: "int",
+        }
 
-    def visit_identifier_type(self, type: node.IdentifierType) -> None:
-        self.print(type.type.name)
+        try:
+            return repr_table[type.type]
+        except KeyError:
+            raise CodeGenerationError
 
-    def visit_array_type(self, type: node.ArrayType) -> None:
-        self.print("list[")
-        type.type.accept(self)
-        self.print("]")
+    def visit_identifier_type(self, type: node.IdentifierType) -> str:
+        return type.type.accept(self)
 
-    def visit_field(self, field: node.Field) -> None:
-        field.ident.accept(self)
-        self.print(": ")
-        field.kind.accept(self)
+    def visit_array_type(self, type: node.ArrayType) -> str:
+        return f"list[{type.type.accept(self)}]"
 
-    def visit_typedef(self, typedef: node.Typedef) -> None:
-        typedef.ident.accept(self)
-        self.print(' = typing.NewType("')
-        typedef.ident.accept(self)
-        self.print('", ')
-        typedef.kind.accept(self)
-        self.print(")")
-        self.newline()
-        self.newline()
+    def visit_field(self, field: node.Field) -> str:
+        template = "{name}: {type}"
 
-    def visit_const(self, const: node.Const) -> None:
-        const.ident.accept(self)
-        self.print(": ")
-        const.kind.accept(self)
-        self.print(" = ")
-        const.expr.accept(self)
-        self.newline()
-        self.newline()
+        return template.format(
+            name=field.ident.accept(self),
+            type=field.kind.accept(self),
+        )
 
-    def visit_enum(self, enum: node.Enum) -> None:
-        self.print("class ")
-        enum.ident.accept(self)
-        self.print("(enum.Enum):", indent=True)
+    def visit_typedef(self, typedef: node.Typedef) -> str:
+        type_template = '{name} = typing.NewType("{name}", {type})'
 
-        for variant in enum.variants:
-            variant.accept(self)
-            self.print(" = enum.auto()")
-            self.newline()
+        return type_template.format(
+            name=typedef.ident.accept(self),
+            type=typedef.kind.accept(self),
+        )
 
-        self.dedent()
+    def visit_const(self, const: node.Const) -> str:
+        template = "{name}: {type} = {definition}"
 
-    def visit_struct(self, struct: node.Struct) -> None:
-        self.print("@dataclass\nclass ")
-        struct.ident.accept(self)
-        self.print(":", indent=True)
+        return template.format(
+            name=const.ident.accept(self),
+            type=const.kind.accept(self),
+            definition=const.expr.accept(self),
+        )
 
-        for field in struct.fields:
-            field.accept(self)
-            self.newline()
+    def visit_enum(self, enum: node.Enum) -> str:
+        declaration_template = "class {name}(enum.Enum):"
 
-        self.dedent()
+        repr = [declaration_template.format(name=enum.ident.accept(self))]
+        repr.extend(self.indent(variant.accept(self)) for variant in enum.variants)
 
-    def visit_module(self, module: node.Module) -> None:
-        raise CodeGenerationError
+        return "\n".join(repr)
+
+    def visit_struct(self, struct: node.Struct) -> str:
+        declaration_template = "class {name}:"
+
+        repr = [
+            "@dataclass",
+            declaration_template.format(name=struct.ident.accept(self)),
+        ]
+        repr.extend(self.indent(field.accept(self)) for field in struct.fields)
+
+        return "\n".join(repr)
+
+    def visit_module(self, module: node.Module) -> str:
+        definition_reprs = [
+            definition.accept(self) for definition in module.definitions
+        ]
+
+        return "\n\n".join(definition_reprs)
 
 
 def main() -> None:
     tokens = lex.tokenize(sample)
     modules = parse.parse(tokens)
-    print(len(modules))
+    printer = Printer()
+
+    module_reprs = [module.accept(printer) for module in modules]
+    for repr in module_reprs:
+        print(repr)
 
 
 if __name__ == "__main__":
