@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+import dataclasses
 import enum
 import typing
 from pprint import pprint
+from operator import attrgetter
 
 from piss import lex, node, parse
 
@@ -19,19 +21,29 @@ class UndefinedIdentifier(SemanticError):
 
 
 class SymbolKind(enum.Enum):
+    Module = enum.auto()
     Struct = enum.auto()
     Enum = enum.auto()
     Const = enum.auto()
     Typedef = enum.auto()
-    FieldIdentifier = enum.auto()
-    VariantIdentifier = enum.auto()
+    Identifier = enum.auto()
 
 
-@dataclass
+@dataclass(repr=False)
 class Symbol:
     kind: SymbolKind
-    type: node.Type | None = None
+    type: node.Type | None = None  # TODO: should this be Optional ?
     link: typing.Optional["SymbolTable"] = None
+
+    def __repr__(self) -> str:
+        nodef_f_vals = (
+            (f.name, attrgetter(f.name)(self))
+            for f in dataclasses.fields(self)
+            if f.name != "type" and f.name != "link"
+        )
+
+        nodef_f_repr = ", ".join(f"{name}={value}" for name, value in nodef_f_vals)
+        return f"{self.__class__.__name__}({nodef_f_repr})"
 
 
 class SymbolTable:
@@ -51,50 +63,49 @@ class SymbolTable:
             raise UndefinedIdentifier
 
 
-class SymbolTableVisitor(node.NodeVisitor):
+class SymbolTableVisitor(node.NodeVisitor[None]):
     def __init__(self) -> None:
-        self.global_symbols = SymbolTable()
-        # self.local_scope_stack: list[SymbolTable] = []
+        self.table = SymbolTable()
 
     def visit_module(self, module: node.Module) -> None:
-        raise SemanticError
+        module_visitor = SymbolTableVisitor()
+
+        for definition in module.definitions:
+            definition.accept(module_visitor)
+
+        self.table[module.ident.name] = Symbol(
+            kind=SymbolKind.Module,
+            link=module_visitor.table,
+        )
 
     def visit_struct(self, struct: node.Struct) -> None:
-        struct_symbol_table = SymbolTable()
+        struct_visitor = SymbolTableVisitor()
 
         for field in struct.fields:
-            symbol = Symbol(
-                kind=SymbolKind.FieldIdentifier,
-                type=field.kind,
-            )
+            field.accept(struct_visitor)
 
-            struct_symbol_table[field.ident.name] = symbol
-
-        symbol = Symbol(kind=SymbolKind.Struct, type=None, link=struct_symbol_table)
-
-        self.global_symbols[struct.ident.name] = symbol
+        self.table[struct.ident.name] = Symbol(
+            kind=SymbolKind.Struct, link=struct_visitor.table
+        )
 
     def visit_enum(self, enum: node.Enum) -> None:
-        enum_symbol_table = SymbolTable()
+        enum_visitor = SymbolTableVisitor()
 
         for variant in enum.variants:
-            symbol = Symbol(
-                kind=SymbolKind.VariantIdentifier,
-                type=None,
-            )
+            variant.accept(enum_visitor)
 
-            enum_symbol_table[variant.name] = symbol
-
-        symbol = Symbol(kind=SymbolKind.Enum, type=None, link=enum_symbol_table)
+        self.table[enum.ident.name] = Symbol(
+            kind=SymbolKind.Enum, type=None, link=enum_visitor.table
+        )
 
     def visit_const(self, const: node.Const) -> None:
-        self.global_symbols[const.ident.name] = Symbol(
+        self.table[const.ident.name] = Symbol(
             kind=SymbolKind.Const,
             type=const.kind,
         )
 
     def visit_typedef(self, typedef: node.Typedef) -> None:
-        self.global_symbols[typedef.ident.name] = Symbol(
+        self.table[typedef.ident.name] = Symbol(
             kind=SymbolKind.Typedef,
             type=typedef.kind,
         )
@@ -106,22 +117,24 @@ class SymbolTableVisitor(node.NodeVisitor):
         raise SemanticError
 
     def visit_identifier(self, ident: node.Identifier) -> None:
-        raise SemanticError
+        self.table[ident.name] = Symbol(kind=SymbolKind.Identifier)
 
     def visit_expression(self, expr: node.Expression) -> None:
-        raise SemanticError
+        ...
 
     def visit_primitive_type(self, type: node.PrimitiveType) -> None:
-        raise SemanticError
+        ...
 
     def visit_identifier_type(self, type: node.IdentifierType) -> None:
-        raise SemanticError
+        ...
 
     def visit_array_type(self, type: node.ArrayType) -> None:
-        raise SemanticError
+        ...
 
     def visit_field(self, field: node.Field) -> None:
-        raise SemanticError
+        self.table[field.ident.name] = Symbol(
+            kind=SymbolKind.Identifier, type=field.kind
+        )
 
 
 sample = """
@@ -134,7 +147,7 @@ module Foo {
     };
 
     enum Color {
-        Red, Green, Blue, Green
+        Red, Green, Blue,
     };
 
     // const int THREE = 3;
@@ -166,10 +179,30 @@ module Foo {
 // module Bar {};
 """
 
+
+def print_tree(tree: SymbolTable, indent=0):
+    for ident, symbol in tree.symbols.items():
+        print(indent*" ", end="")
+        print(ident, end=": ")
+        pprint(symbol)
+        if symbol.link is not None:
+            print_tree(symbol.link, indent=indent+4)
+
+
 tokens = lex.tokenize(sample)
 modules = parse.parse(tokens)
 
 visitor = SymbolTableVisitor()
 
-modules[0].accept(visitor)
-pprint(visitor.global_symbols.symbols)
+# try:
+for i, module in enumerate(modules):
+    module.accept(visitor)
+
+# print_tree(visitor.table)
+print_tree(visitor.table)
+# pprint(visitor.table.symbols)
+exit()
+# except IdentifierRedefinition:
+#     print(i)
+#     print(visitor.table.symbols)
+#     exit()

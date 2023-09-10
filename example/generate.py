@@ -2,7 +2,7 @@ import typing
 import textwrap
 from functools import partial
 
-from piss import lex, node, parse
+from piss import lex, node, parse, analysis
 
 T = typing.TypeVar("T")
 
@@ -53,7 +53,7 @@ class CodeGenerationError(ValueError):
     ...
 
 
-class Printer(node.NodeVisitor[str]):
+class PythonPrinter(node.NodeVisitor[str]):
     indent = partial(textwrap.indent, prefix=" " * 4)
 
     def visit_keyword(self, keyword: node.Keyword) -> str:
@@ -130,9 +130,9 @@ class Printer(node.NodeVisitor[str]):
         return "\n".join(repr)
 
     def visit_module(self, module: node.Module) -> str:
-        definition_reprs = [
+        definition_reprs = (
             definition.accept(self) for definition in module.definitions
-        ]
+        )
 
         return "\n\n".join(definition_reprs)
 
@@ -140,9 +140,12 @@ class Printer(node.NodeVisitor[str]):
 def main() -> None:
     tokens = lex.tokenize(sample)
     modules = parse.parse(tokens)
-    printer = Printer()
+    printer = PythonPrinter()
 
-    module_reprs = [module.accept(printer) for module in modules]
+    table = analysis.SymbolTableVisitor()
+    modules[0].accept(table)
+
+    module_reprs = (module.accept(printer) for module in modules)
     for repr in module_reprs:
         print(repr)
 
